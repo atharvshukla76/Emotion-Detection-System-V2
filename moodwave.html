@@ -394,8 +394,17 @@
 
     .song-track { font-size: 9px; color: var(--secondary); }
     .song-title { font-size: 10px; color: var(--text-primary); opacity: 0.8; }
-    .song-link { font-size: 10px; color: var(--primary); }
-
+    .song-link { 
+      font-size: 10px; 
+      color: var(--primary); 
+      text-decoration: none; 
+      display: inline-block;
+      transition: color 0.2s;
+    }
+    .song-link:hover {
+      color: var(--text-primary);
+      text-decoration: underline;
+    }
     .advice-box {
       border: 1px solid rgba(99,83,202,0.3);
       background: rgba(99,83,202,0.05);
@@ -1033,12 +1042,13 @@
       songList.innerHTML = '';
       const songs = MOCK_SONGS[winner.name] || MOCK_SONGS['Neutral'];
       songs.forEach((songTitle, idx) => {
+        const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(songTitle)}`;
         const card = document.createElement('div');
         card.className = 'song-card';
         card.innerHTML = `
           <div class="song-track">TRACK 0${idx + 1}</div>
           <div class="song-title">${songTitle}</div>
-          <div class="song-link">▶ youtube.com/watch...</div>
+          <a class="song-link" href="${searchUrl}" target="_blank" rel="noopener noreferrer">▶ Listen on YouTube</a>
         `;
         songList.appendChild(card);
       });
