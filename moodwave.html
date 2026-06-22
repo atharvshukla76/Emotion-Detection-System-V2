@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MoodWave - Emotion Detection System</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap');
+
+    :root {
+      --bg: #050F1E;
+      --primary: #99D775;
+      --secondary: #6353CA;
+      --panel-blue: #1A4896;
+      --text-primary: #E8F4FF;
+      --text-muted: rgba(232,244,255,0.35);
+
+      --color-happy: #FFD700;
+      --color-angry: #FF3366;
+      --color-sad: #6699FF;
+      --color-fear: #CC44FF;
+      --color-neutral: #00C8FF;
+      --color-disgust: #44FF88;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Share Tech Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      overflow-x: hidden;
+      padding: 40px 20px;
+    }
+
+    /* Atmosphere Effects */
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image: 
+        linear-gradient(rgba(153,215,117,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(153,215,117,0.04) 1px, transparent 1px);
+      background-size: 30px 30px;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0,0,0,0.15),
+        rgba(0,0,0,0.15) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 800px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+    }
+
+    /* Top Section */
+    .top-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .status-dot-wrap {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid var(--primary);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      background-color: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--primary);
+      animation: pulse-dot 2s infinite;
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: var(--primary);
+      letter-spacing: 2px;
+    }
+
+    .title-emotion {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 64px;
+      line-height: 1;
+      color: var(--text-primary);
+      text-transform: capitalize;
+    }
+
+    .title-detection {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 900;
+      font-size: 56px;
+      line-height: 1;
+      text-transform: capitalize;
+      background: linear-gradient(to right, var(--color-neutral), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-top: -5px;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+      margin-top: 15px;
+    }
+
+    /* Main Card */
+    .main-card {
+      width: 100%;
+      background: rgba(10, 15, 30, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 24px;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      transition: all 0.5s ease;
+    }
+
+    /* Webcam Preview Container - Full Width */
+    .webcam-container {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 16px;
+      border: 2px solid rgba(153,215,117,0.3);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 25px;
+      position: relative;
+      transition: all 0.3s ease;
+      overflow: hidden;
+      background: rgba(0,0,0,0.4);
+    }
+
+    .webcam-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 16px;
+      transform: scaleX(-1); /* Mirror the webcam */
+    }
+
+    .webcam-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .webcam-placeholder-icon {
+      font-size: 48px;
+      filter: grayscale(100%) brightness(200%);
+    }
+
+    .webcam-container.recording {
+      border-color: var(--color-angry);
+      box-shadow: 0 0 30px rgba(255,51,102,0.4);
+      animation: pulse-ring 1s infinite alternate;
+    }
+
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 24px;
+      margin-bottom: 15px;
+      transition: all 0.3s ease;
+    }
+
+    .card-instructions {
+      text-align: center;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 30px;
+      transition: all 0.3s ease;
+      min-height: 40px;
+    }
+
+    /* Waveform */
+    .canvas-container {
+      width: 100%;
+      height: 60px;
+      margin-bottom: 30px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Button */
+    .start-btn {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(153,215,117,0.3);
+      color: var(--text-primary);
+      font-family: 'Orbitron', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      padding: 15px 40px;
+      border-radius: 30px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    .start-btn:hover {
+      background: rgba(153,215,117,0.1);
+      border-color: var(--primary);
+      box-shadow: 0 0 15px rgba(153,215,117,0.2);
+    }
+
+    .start-btn.recording {
+      border-color: var(--color-angry);
+      color: var(--color-angry);
+    }
+    
+    .start-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .play-icon {
+      font-size: 12px;
+    }
+
+    .corner-dot {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--color-sad); /* Blue dot */
+      border: 2px solid var(--text-primary);
+    }
+
+    /* Footer Text */
+    .footer-text {
+      color: var(--text-muted);
+      font-size: 14px;
+      letter-spacing: 2px;
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    /* Results Layout inside Card */
+    .results-grid {
+      display: none;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    .results-grid.visible {
+      display: grid;
+      animation: fade-in 0.5s ease;
+    }
+
+    @media (max-width: 600px) {
+      .results-grid.visible {
+        grid-template-columns: 1fr;
+      }
+      .title-emotion { font-size: 40px; }
+      .title-detection { font-size: 32px; }
+      .webcam-container { aspect-ratio: 4 / 3; }
+    }
+
+    /* Left Panel - Emotions */
+    .emotion-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      border-left: 2px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .emotion-row.active {
+      background: rgba(255,255,255,0.03);
+    }
+
+    .emotion-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .emotion-name-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .emotion-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .emotion-name {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .emotion-pct {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .progress-track {
+      height: 2px;
+      background: rgba(255,255,255,0.1);
+      width: 100%;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      transition: width 1s ease;
+    }
+
+    /* Right Panel - Songs & Advice */
+    .right-results {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .song-card {
+      border: 1px solid var(--panel-blue);
+      background: transparent;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+
+    .song-track { font-size: 9px; color: var(--secondary); }
+    .song-title { font-size: 10px; color: var(--text-primary); opacity: 0.8; }
+    .song-link { font-size: 10px; color: var(--primary); }
+
+    .advice-box {
+      border: 1px solid rgba(99,83,202,0.3);
+      background: rgba(99,83,202,0.05);
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .advice-title { font-size: 9px; color: var(--secondary); letter-spacing: 1px; }
+    .advice-content { font-size: 10px; color: var(--text-primary); opacity: 0.8; line-height: 1.7; white-space: pre-line; }
+
+    /* Recording timer badge */
+    .record-timer {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255,51,102,0.25);
+      color: var(--color-angry);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,51,102,0.4);
+      display: none;
+      letter-spacing: 1px;
+    }
+
+    .webcam-container.recording .record-timer {
+      display: block;
+    }
+
+    #faceCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      z-index: 5;
+      transform: scaleX(-1); /* Mirror to match mirrored video */
+      display: none;
+    }
+
+    /* Animations */
+    @keyframes pulse-dot {
+      0% { opacity: 0.4; box-shadow: 0 0 5px var(--primary); }
+      50% { opacity: 1; box-shadow: 0 0 15px var(--primary); }
+      100% { opacity: 0.4; box-shadow: 0 0 5px var(--primary); }
+    }
+
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 10px rgba(255,51,102,0.2); }
+      100% { box-shadow: 0 0 30px rgba(255,51,102,0.6); }
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/tracking-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/data/face-min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="top-header">
+      <div class="status-indicator">
+        <div class="status-dot-wrap">
+          <div class="status-dot"></div>
+        </div>
+        <span class="status-text">NEURAL ANALYSIS ACTIVE</span>
+      </div>
+      <h1 class="title-emotion">Emotion</h1>
+      <h1 class="title-detection">Detection System</h1>
+      <p class="subtitle">Real-time multimodal emotion recognition</p>
+    </div>
+
+    <div class="main-card" id="mainCard">
+      <div class="webcam-container" id="webcamContainer">
+        <video id="webcamPreview" autoplay muted playsinline></video>
+        <canvas id="faceCanvas"></canvas>
+        <div class="webcam-placeholder" id="webcamPlaceholder">
+          <div class="webcam-placeholder-icon">📹</div>
+          <span>CAMERA</span>
+        </div>
+        <div class="record-timer" id="recordTimer">0.0s</div>
+      </div>
+      <h2 class="card-title" id="cardTitle">Ready to Analyse</h2>
+      <p class="card-instructions" id="cardInstructions">
+        Speak naturally for up to 5 seconds.<br>
+        The system will detect your emotional state.
+      </p>
+      
+      <div class="canvas-container">
+        <canvas id="waveform"></canvas>
+      </div>
+
+      <button class="start-btn" id="startBtn">
+        <span class="play-icon" id="btnIcon">▶</span> <span id="btnText">Start Analysis</span>
+      </button>
+
+      <div class="results-grid" id="resultsGrid">
+        <div class="left-results" id="emotionList">
+          <!-- Emotion bars go here -->
+        </div>
+        <div class="right-results">
+          <div id="songList"></div>
+          <div class="advice-box">
+            <div class="advice-title">⚡ WHAT TO DO</div>
+            <div class="advice-content" id="adviceContent"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="corner-dot"></div>
+    </div>
+
+    <div class="footer-text">
+      CNN · CROSS-MODAL ATTENTION · OPTICAL FLOW · 6-CLASS CLASSIFICATION
+    </div>
+  </div>
+
+  <script>
+    const EMOTIONS = [
+      { name: 'Happy', color: '#FFD700' },
+      { name: 'Angry', color: '#FF3366' },
+      { name: 'Sad', color: '#6699FF' },
+      { name: 'Fear', color: '#CC44FF' },
+      { name: 'Neutral', color: '#00C8FF' },
+      { name: 'Disgust', color: '#44FF88' }
+    ];
+
+    const ADVICE_STRINGS = {
+      'Happy': "Use this energy productively.\n→ Start something meaningful.\n→ Share positivity.\n→ Capture the moment.",
+      'Angry': "Pause before reacting.\n→ Take deep breaths (inhale 4s, exhale 6s).\n→ Walk away from the situation.\n→ Avoid decisions right now.",
+      'Sad': "Talk to someone you trust.\n→ Write your thoughts down.\n→ Listen to uplifting music.\n→ Do one small task.",
+      'Fear': "Slow your breathing.\n→ Ask: is this real or imagined?\n→ Break problems into small steps.\n→ Stay grounded in present.",
+      'Neutral': "Best time for deep work.\n→ Start something important.\n→ Avoid distractions.\n→ Plan clearly.",
+      'Disgust': "Step away from the trigger.\n→ Reset your environment.\n→ Shift focus.\n→ Avoid dwelling."
+    };
+
+    const MOCK_SONGS = {
+      'Happy': ['Walking On Sunshine', 'Happy', 'Good Vibrations'],
+      'Angry': ['Break Stuff', 'Killing In The Name', 'Given Up'],
+      'Sad': ['Someone Like You', 'Fix You', 'Breathe Me'],
+      'Fear': ['Echoes', 'Climbing Up The Walls', 'Lullaby'],
+      'Neutral': ['Weightless', 'Clair de Lune', 'Teardrop'],
+      'Disgust': ['Toxicity', 'The Pot', 'Schism']
+    };
+
+    /* ─── DOM Elements ─── */
+    const canvas = document.getElementById('waveform');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const btnText = document.getElementById('btnText');
+    const btnIcon = document.getElementById('btnIcon');
+    const webcamContainer = document.getElementById('webcamContainer');
+    const webcamPreview = document.getElementById('webcamPreview');
+    const faceCanvas = document.getElementById('faceCanvas');
+    const webcamPlaceholder = document.getElementById('webcamPlaceholder');
+    const recordTimerEl = document.getElementById('recordTimer');
+    const cardTitle = document.getElementById('cardTitle');
+    const cardInstructions = document.getElementById('cardInstructions');
+    const resultsGrid = document.getElementById('resultsGrid');
+    const emotionList = document.getElementById('emotionList');
+    const songList = document.getElementById('songList');
+    const adviceContent = document.getElementById('adviceContent');
+
+    /* ─── State ─── */
+    let state = 'IDLE'; // IDLE | RECORDING | ANALYSING | RESULT
+    let waveParams = {
+      amplitude: 5,
+      frequency: 0.02,
+      speed: 0.03,
+      offset: 0,
+      color: '#1A4896',
+      glow: 0,
+      opacity: 0.5
+    };
+
+    /* ─── Media vars ─── */
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordTimeout = null;
+    let recordStartTime = 0;
+    let timerInterval = null;
+
+    /* ─── Face Tracking vars ─── */
+    let tracker = null;
+    let trackerTask = null;
+    let lastFaceRect = null;
+    let currentEmotionLabel = "";
+    let currentEmotionColor = "#99D775";
+
+    /* ─── Audio analyser for waveform visualisation ─── */
+    let audioContext = null;
+    let analyserNode = null;
+    let analyserData = null;
+
+    /* ─── Canvas ─── */
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function drawWaveform() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const centerY = canvas.height / 2;
+
+      ctx.beginPath();
+      ctx.moveTo(0, centerY);
+
+      // If we have a live analyser during recording, blend real audio data into the wave
+      let liveLevel = 0;
+      if (state === 'RECORDING' && analyserNode && analyserData) {
+        analyserNode.getByteTimeDomainData(analyserData);
+        // Compute RMS level for amplitude modulation
+        let sum = 0;
+        for (let i = 0; i < analyserData.length; i++) {
+          const v = (analyserData[i] - 128) / 128;
+          sum += v * v;
+        }
+        liveLevel = Math.sqrt(sum / analyserData.length);
+      }
+
+      for (let x = 0; x < canvas.width; x++) {
+        let noise = state === 'RECORDING' ? (Math.random() - 0.5) * 8 * (1 + liveLevel * 4) : 0;
+        const amp = state === 'RECORDING' ? waveParams.amplitude * (1 + liveLevel * 3) : waveParams.amplitude;
+        const y = centerY + Math.sin(x * waveParams.frequency + waveParams.offset) * amp + noise;
+        ctx.lineTo(x, y);
+      }
+
+      ctx.strokeStyle = waveParams.color;
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = waveParams.glow;
+      ctx.shadowColor = waveParams.color;
+      ctx.globalAlpha = waveParams.opacity;
+      ctx.stroke();
+
+      waveParams.offset += waveParams.speed;
+      requestAnimationFrame(drawWaveform);
+    }
+
+    function initEmotions() {
+      emotionList.innerHTML = '';
+      EMOTIONS.forEach(emo => {
+        const row = document.createElement('div');
+        row.className = 'emotion-row';
+        row.id = `row-${emo.name}`;
+        row.innerHTML = `
+          <div class="emotion-header">
+            <div class="emotion-name-wrap">
+              <div class="emotion-dot" style="background-color: ${emo.color}; box-shadow: 0 0 5px ${emo.color}"></div>
+              <div class="emotion-name">${emo.name}</div>
+            </div>
+            <div class="emotion-pct" id="pct-${emo.name}">0%</div>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar" id="bar-${emo.name}" style="background-color: ${emo.color}"></div>
+          </div>
+        `;
+        emotionList.appendChild(row);
+      });
+    }
+
+    /* ─── Recording Timer ─── */
+    function startRecordTimer() {
+      recordStartTime = Date.now();
+      recordTimerEl.textContent = '0.0s';
+      timerInterval = setInterval(() => {
+        const elapsed = ((Date.now() - recordStartTime) / 1000).toFixed(1);
+        recordTimerEl.textContent = elapsed + 's';
+      }, 100);
+    }
+
+    function stopRecordTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    /* ─── Initialize Face Tracking ─── */
+    function initFaceTracker() {
+      if (tracker) return;
+      tracker = new tracking.ObjectTracker('face');
+      tracker.setInitialScale(4);
+      tracker.setStepSize(2);
+      tracker.setEdgesDensity(0.1);
+
+      const fctx = faceCanvas.getContext('2d');
+
+      tracker.on('track', (event) => {
+        // Sync canvas size to display dimensions of video in DOM dynamically
+        if (faceCanvas.width !== webcamPreview.offsetWidth || faceCanvas.height !== webcamPreview.offsetHeight) {
+          faceCanvas.width = webcamPreview.offsetWidth;
+          faceCanvas.height = webcamPreview.offsetHeight;
+        }
+
+        fctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+
+        // Draw bounding box if active
+        if (state === 'RECORDING' || state === 'ANALYSING' || state === 'RESULT' || state === 'IDLE') {
+          if (event.data.length > 0) {
+            // Find the largest face detected
+            const rect = event.data.reduce((max, f) => (f.width * f.height > max.width * max.height) ? f : max, event.data[0]);
+            lastFaceRect = rect;
+
+            // Draw bounding box
+            fctx.strokeStyle = state === 'RESULT' ? currentEmotionColor : '#99D775';
+            fctx.lineWidth = 3;
+            fctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+            // Draw label
+            fctx.fillStyle = state === 'RESULT' ? currentEmotionColor : '#99D775';
+            fctx.font = 'bold 14px Share Tech Mono';
+
+            let label = "FACE DETECTED";
+            if (state === 'RECORDING') {
+              label = "RECORDING EMOTION...";
+            } else if (state === 'ANALYSING') {
+              label = "ANALYSING...";
+            } else if (state === 'RESULT' && currentEmotionLabel) {
+              label = currentEmotionLabel.toUpperCase();
+            }
+
+            fctx.fillText(label, rect.x, rect.y - 10);
+          } else if (state === 'RESULT' && lastFaceRect && currentEmotionLabel) {
+            // Keep drawing the bounding box on the last known position to prevent blinking
+            const rect = lastFaceRect;
+            fctx.strokeStyle = currentEmotionColor;
+            fctx.lineWidth = 3;
+            fctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+            fctx.fillStyle = currentEmotionColor;
+            fctx.font = 'bold 14px Share Tech Mono';
+            fctx.fillText(currentEmotionLabel.toUpperCase(), rect.x, rect.y - 10);
+          }
+        }
+      });
+    }
+
+    /* ─── Start Webcam Preview (silent) ─── */
+    async function startPreview() {
+      try {
+        if (!mediaStream) {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          webcamPreview.srcObject = mediaStream;
+        }
+        webcamPlaceholder.style.display = 'none';
+        webcamPreview.style.display = 'block';
+        faceCanvas.style.display = 'block';
+
+        // Set up audio analyser for waveform visualisation if needed
+        if (!audioContext) {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const source = audioContext.createMediaStreamSource(mediaStream);
+          analyserNode = audioContext.createAnalyser();
+          analyserNode.fftSize = 256;
+          analyserData = new Uint8Array(analyserNode.frequencyBinCount);
+          source.connect(analyserNode);
+        }
+
+        // Initialize and start face tracking
+        initFaceTracker();
+        if (!trackerTask) {
+          trackerTask = tracking.track(webcamPreview, tracker);
+        }
+
+        return true;
+      } catch (err) {
+        console.error('Media access denied:', err);
+        alert('Camera and microphone access is required for the Emotion Detection System.\n\nPlease allow access and try again.');
+        return false;
+      }
+    }
+
+    /* ─── Stop all media tracks ─── */
+    function stopMediaStream() {
+      if (trackerTask) {
+        trackerTask.stop();
+        trackerTask = null;
+      }
+      if (faceCanvas) {
+        const fctx = faceCanvas.getContext('2d');
+        fctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+        faceCanvas.style.display = 'none';
+      }
+      lastFaceRect = null;
+
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+      webcamPreview.srcObject = null;
+      if (audioContext && audioContext.state !== 'closed') {
+        try { audioContext.close(); } catch(e) {}
+        audioContext = null;
+        analyserNode = null;
+        analyserData = null;
+      }
+    }
+
+    /* ─── Determine best supported MIME type ─── */
+    function getSupportedMimeType() {
+      const types = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+      ];
+      for (const type of types) {
+        if (MediaRecorder.isTypeSupported(type)) return type;
+      }
+      return ''; // Let browser decide
+    }
+
+    /* ─── Main Button Click ─── */
+    startBtn.addEventListener('click', async () => {
+      if (state === 'IDLE' || state === 'RESULT') {
+        // ── Start Recording ──
+        currentEmotionLabel = "";
+        currentEmotionColor = "#99D775";
+        lastFaceRect = null;
+
+        const ok = await startPreview();
+        if (!ok) return;
+
+        state = 'RECORDING';
+
+        webcamContainer.classList.add('recording');
+        webcamContainer.style.display = 'flex';
+        cardTitle.textContent = "Recording...";
+        cardTitle.style.color = "var(--color-angry)";
+        cardTitle.style.textShadow = 'none';
+        cardTitle.style.fontSize = "24px";
+
+        cardInstructions.textContent = "Capturing video & audio... express yourself now.";
+
+        btnText.textContent = "Stop Analysis";
+        btnIcon.textContent = "⏹";
+        startBtn.classList.add('recording');
+        resultsGrid.classList.remove('visible');
+
+        waveParams = { amplitude: 25, frequency: 0.04, speed: 0.15, offset: waveParams.offset, color: '#FF3366', glow: 15, opacity: 1 };
+
+        // Start MediaRecorder
+        recordedChunks = [];
+        const mimeType = getSupportedMimeType();
+        const options = mimeType ? { mimeType } : {};
+
+        try {
+          mediaRecorder = new MediaRecorder(mediaStream, options);
+        } catch (e) {
+          console.warn('MediaRecorder init with options failed, falling back:', e);
+          mediaRecorder = new MediaRecorder(mediaStream);
+        }
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            recordedChunks.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          handleRecordingStopped();
+        };
+
+        mediaRecorder.start(100); // collect data every 100ms
+        startRecordTimer();
+
+        // Auto-stop after 5 seconds
+        recordTimeout = setTimeout(() => {
+          if (state === 'RECORDING') stopRecording();
+        }, 5000);
+
+      } else if (state === 'RECORDING') {
+        // ── Manual Stop ──
+        clearTimeout(recordTimeout);
+        stopRecording();
+      }
+    });
+
+    /* ─── Stop Recording ─── */
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop(); // triggers onstop → handleRecordingStopped
+      }
+      stopRecordTimer();
+    }
+
+    /* ─── Handle Recording Stopped ─── */
+    async function handleRecordingStopped() {
+      state = 'ANALYSING';
+
+      // Update UI
+      webcamContainer.classList.remove('recording');
+      btnText.textContent = "Processing...";
+      btnIcon.textContent = "⌛";
+      startBtn.disabled = true;
+      cardTitle.textContent = "Analysing Neural Data...";
+      cardTitle.style.color = "var(--primary)";
+
+      waveParams = { amplitude: 15, frequency: 0.08, speed: 0.2, offset: waveParams.offset, color: '#99D775', glow: 10, opacity: 0.8 };
+
+      // Check recording duration
+      const recordDuration = (Date.now() - recordStartTime) / 1000;
+      if (recordDuration < 1.0 || recordedChunks.length === 0) {
+        cardTitle.textContent = "Recording Too Short";
+        cardTitle.style.color = "var(--color-angry)";
+        cardInstructions.textContent = '⚠ Please record for at least 1 second.';
+        btnText.textContent = "Try Again";
+        btnIcon.textContent = "↺";
+        startBtn.disabled = false;
+        startBtn.classList.remove('recording');
+        state = 'IDLE';
+        waveParams = { amplitude: 5, frequency: 0.02, speed: 0.03, offset: waveParams.offset, color: '#1A4896', glow: 0, opacity: 0.5 };
+        stopMediaStream();
+        webcamPreview.style.display = 'none';
+        webcamPlaceholder.style.display = 'flex';
+        return;
+      }
+
+      // Build blob from recorded chunks
+      const mimeType = mediaRecorder && mediaRecorder.mimeType ? mediaRecorder.mimeType : 'video/webm';
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+
+      console.log(`[VIDEO] Recorded ${blob.size} bytes (${(recordDuration).toFixed(1)}s) as ${mimeType}`);
+
+      // Keep the last frame visible but show it's done
+      cardInstructions.textContent = "Processing neural patterns...";
+
+      // Send as file upload
+      try {
+        const formData = new FormData();
+        formData.append('file', blob, `recording.${ext}`);
+
+        const response = await fetch('/predict', {
+          method: 'POST',
+          body: formData
+          // No Content-Type header — let the browser set multipart boundary
+        });
+
+        if (!response.ok) {
+          const errText = await response.text().catch(() => '');
+          throw new Error(`Server error (${response.status}): ${errText}`);
+        }
+
+        const result = await response.json();
+        showResults(result);
+      } catch (err) {
+        console.error('Analysis failed:', err);
+        cardTitle.textContent = "Analysis Failed";
+        cardTitle.style.color = "var(--color-angry)";
+        cardInstructions.textContent = '⚠ Could not reach the AI server. Check your connection.';
+        btnText.textContent = "Try Again";
+        btnIcon.textContent = "↺";
+        startBtn.disabled = false;
+        startBtn.classList.remove('recording');
+        state = 'IDLE';
+        waveParams = { amplitude: 5, frequency: 0.02, speed: 0.03, offset: waveParams.offset, color: '#1A4896', glow: 0, opacity: 0.5 };
+        webcamPreview.style.display = 'none';
+        webcamPlaceholder.style.display = 'flex';
+      }
+    }
+
+    /* ─── Show Results ─── */
+    function showResults(data) {
+      state = 'RESULT';
+      startBtn.disabled = false;
+
+      // Keep webcam preview active on result page
+      webcamPreview.style.display = 'block';
+      webcamPlaceholder.style.display = 'none';
+      faceCanvas.style.display = 'block';
+
+      startBtn.classList.remove('recording');
+      btnText.textContent = "New Analysis";
+      btnIcon.textContent = "↺";
+
+      const winnerName = data.emotion;
+      const winner = EMOTIONS.find(e => e.name.toLowerCase() === winnerName.toLowerCase()) || EMOTIONS[0];
+
+      currentEmotionLabel = winner.name;
+      currentEmotionColor = winner.color;
+
+      cardTitle.textContent = winner.name.toUpperCase();
+      cardTitle.style.color = winner.color;
+      cardTitle.style.textShadow = `0 0 20px ${winner.color}`;
+      cardTitle.style.fontSize = "48px";
+
+      const conf = data.confidence != null ? Math.round(data.confidence * 100) : null;
+      let instr = conf != null ? `Detected with ${conf}% confidence` : 'Analysis complete';
+      if (data.diagnostics) {
+        const diag = data.diagnostics;
+        const faceFrames = diag.face_detected_frames != null ? diag.face_detected_frames : 0;
+        const audioStatus = diag.audio_features_zero ? "Silent" : "Active";
+        const videoStatus = diag.video_features_zero ? "Static" : "Active";
+        instr += `\n[Face: ${faceFrames} frames | Audio: ${audioStatus} | Video: ${videoStatus}]`;
+      }
+      cardInstructions.textContent = instr;
+      cardInstructions.style.whiteSpace = 'pre-line';
+
+      waveParams = { amplitude: 10, frequency: 0.02, speed: 0.05, offset: waveParams.offset, color: winner.color, glow: 10, opacity: 0.8 };
+
+      initEmotions();
+      resultsGrid.classList.add('visible');
+
+      // Setup bars based on API result
+      const confidences = data.all_scores;
+      for (let emoName in confidences) {
+        const emo = EMOTIONS.find(e => e.name.toLowerCase() === emoName.toLowerCase());
+        if (emo) {
+          const val = Math.round(confidences[emoName] * 100);
+          const row = document.getElementById(`row-${emo.name}`);
+          document.getElementById(`pct-${emo.name}`).textContent = `${val}%`;
+
+          setTimeout(() => { document.getElementById(`bar-${emo.name}`).style.width = `${val}%`; }, 100);
+
+          if (emo.name.toLowerCase() === winnerName.toLowerCase()) {
+            row.classList.add('active');
+            row.style.borderLeftColor = emo.color;
+          }
+        }
+      }
+
+      // Setup songs & advice
+      adviceContent.textContent = ADVICE_STRINGS[winner.name] || "Stay calm and reflect.";
+      songList.innerHTML = '';
+      const songs = MOCK_SONGS[winner.name] || MOCK_SONGS['Neutral'];
+      songs.forEach((songTitle, idx) => {
+        const card = document.createElement('div');
+        card.className = 'song-card';
+        card.innerHTML = `
+          <div class="song-track">TRACK 0${idx + 1}</div>
+          <div class="song-title">${songTitle}</div>
+          <div class="song-link">▶ youtube.com/watch...</div>
+        `;
+        songList.appendChild(card);
+      });
+    }
+
+    /* ─── Init ─── */
+    resizeCanvas();
+    initEmotions();
+    drawWaveform();
+
+    // Hide the video element initially, show placeholder
+    webcamPreview.style.display = 'none';
+    webcamPlaceholder.style.display = 'flex';
+  </script>
+</body>
+</html>
