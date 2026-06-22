@@ -237,19 +237,32 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         
         if stable_box is not None:
             x, y, w_face, h_face = stable_box
-            # Direct crop coordinates with clipping
-            y_start_eye = max(0, y + int(-0.144 * h_face))
-            y_end_eye = min(h, y + int(0.375 * h_face))
-            x_start_eye = max(0, x + int(-0.410 * w_face))
-            x_end_eye = min(w, x + int(1.435 * w_face))
+            # Reconstruct virtual frame based on RAVDESS dataset proportions
+            w_virtual = int(w_face / 0.325)
+            h_virtual = int(h_face / 0.578)
+            x_virtual = x - int(w_virtual * 0.333)
+            y_virtual = y - int(h_virtual * 0.233)
             
-            y_start_mouth = max(0, y + int(0.721 * h_face))
-            y_end_mouth = min(h, y + int(1.153 * h_face))
-            x_start_mouth = max(0, x + int(-0.257 * w_face))
-            x_end_mouth = min(w, x + int(1.281 * w_face))
+            x_start_v = max(0, x_virtual)
+            y_start_v = max(0, y_virtual)
+            x_end_v = min(w, x_virtual + w_virtual)
+            y_end_v = min(h, y_virtual + h_virtual)
             
-            eyes = gray[y_start_eye:y_end_eye, x_start_eye:x_end_eye]
-            mouth = gray[y_start_mouth:y_end_mouth, x_start_mouth:x_end_mouth]
+            pad_left = max(0, -x_virtual)
+            pad_top = max(0, -y_virtual)
+            
+            virtual_gray = np.ones((h_virtual, w_virtual), dtype=np.uint8) * 128
+            
+            if y_start_v < y_end_v and x_start_v < x_end_v:
+                cropped = gray[y_start_v:y_end_v, x_start_v:x_end_v]
+                h_c, w_c = cropped.shape
+                # Ensure we don't go out of bounds on the virtual frame
+                pad_bottom = min(pad_top + h_c, h_virtual)
+                pad_right = min(pad_left + w_c, w_virtual)
+                virtual_gray[pad_top:pad_bottom, pad_left:pad_right] = cropped[:pad_bottom-pad_top, :pad_right-pad_left]
+            
+            eyes = virtual_gray[int(h_virtual*0.15):int(h_virtual*0.45), int(w_virtual*0.2):int(w_virtual*0.8)]
+            mouth = virtual_gray[int(h_virtual*0.65):int(h_virtual*0.9), int(w_virtual*0.25):int(w_virtual*0.75)]
         else:
             eyes = gray[int(h*0.15):int(h*0.45), int(w*0.2):int(w*0.8)]
             mouth = gray[int(h*0.65):int(h*0.9), int(w*0.25):int(w*0.75)]
