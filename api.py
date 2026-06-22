@@ -287,8 +287,8 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
     # In RAVDESS, the actor's face occupied exactly 27.3% of the video width.
     # If the user sits closer/further, their optical flow displacement vectors will be artificially larger/smaller.
     # We scale the vectors down/up to match the exact 27.3% reference frame!
-    if stable_box is not None and len(frames) > 0:
-        h_frame, w_frame, _ = frames[0].shape
+    if stable_box is not None and len(raw_frames) > 0:
+        h_frame, w_frame, _ = raw_frames[0].shape
         expected_w_face = w_frame * 0.273
         scale_correction = expected_w_face / stable_box[2]
         video_feat = video_feat * scale_correction
