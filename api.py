@@ -92,8 +92,14 @@ def preprocess_audio(file_path):
         if len(signal) > 0:
             signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.85)
             
-        if len(signal) == 0 or np.std(signal) < 0.015:
+        std_sig = np.std(signal)
+        if len(signal) == 0 or std_sig < 0.015:
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
+            
+        # DYNAMIC AMPLITUDE SCALING
+        # Force the audio volume to match the exact RAVDESS studio average (0.0095 std)
+        # This removes microphone gain dependency and prevents 'Anger' misclassifications from loud mics.
+        signal = signal * (0.0095 / std_sig)
             
         # Trim silent boundaries from outer edges
         trimmed, index = librosa.effects.trim(signal, top_db=30)
@@ -275,7 +281,20 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         except Exception:
             flow_seq.append(np.zeros((img_size[0], img_size[1], 2), dtype=np.float32))
             
-    return np.array(flow_seq, dtype=np.float32), face_detected_count
+    video_feat = np.array(flow_seq, dtype=np.float32)
+    
+    # DYNAMIC SPATIAL SCALING
+    # In RAVDESS, the actor's face occupied exactly 27.3% of the video width.
+    # If the user sits closer/further, their optical flow displacement vectors will be artificially larger/smaller.
+    # We scale the vectors down/up to match the exact 27.3% reference frame!
+    if stable_box is not None and len(frames) > 0:
+        h_frame, w_frame, _ = frames[0].shape
+        expected_w_face = w_frame * 0.273
+        scale_correction = expected_w_face / stable_box[2]
+        video_feat = video_feat * scale_correction
+        print(f"[DEBUG] Applied video spatial scaling: {scale_correction:.2f}x")
+            
+    return video_feat, face_detected_count
 
 # =====================================================================
 # 🎯 ENDPOINTS
