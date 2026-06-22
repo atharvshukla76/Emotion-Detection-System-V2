@@ -385,9 +385,19 @@ async def predict_emotion(file: UploadFile = File(...)):
         video_feat = np.expand_dims(video_feat, axis=0) # Shape: (1, 64, 64, 30)
         
         # Predict
-        probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
-        idx = int(np.argmax(probs))
-        label = encoder.inverse_transform([idx])[0]
+        motion_energy = float(np.mean(np.abs(video_feat))) if not video_zeros else 0.0
+        
+        if audio_zeros and motion_energy < 0.15:
+            # Override for completely silent and mostly motionless states (baseline state)
+            idx = int(np.where(encoder.classes_ == "Neutral")[0][0])
+            probs = np.zeros(len(encoder.classes_), dtype=float)
+            probs[idx] = 1.0
+            label = "Neutral"
+            print(f"[DEBUG] Triggered NEUTRAL override. Motion energy: {motion_energy:.3f}")
+        else:
+            probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
+            idx = int(np.argmax(probs))
+            label = encoder.inverse_transform([idx])[0]
         
         confidences = {
             encoder.inverse_transform([i])[0]: float(p)
