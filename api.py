@@ -7,6 +7,7 @@ import subprocess
 import traceback
 import numpy as np
 import librosa
+import noisereduce as nr
 import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
@@ -86,6 +87,11 @@ def load_resources():
 def preprocess_audio(file_path):
     try:
         signal, _ = librosa.load(file_path, sr=SR)
+        
+        # Apply Spectral Gating Noise Reduction to match studio training conditions
+        if len(signal) > 0:
+            signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.85)
+            
         if len(signal) == 0 or np.std(signal) < 0.015:
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
@@ -373,13 +379,6 @@ async def predict_emotion(file: UploadFile = File(...)):
             label = "Neutral"
             print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}")
         else:
-            # FORCE MODALITY DROPOUT FOR LIVE AUDIO:
-            # Since the user's webcam microphone has vastly different room acoustics and noise profiles 
-            # than the studio-recorded RAVDESS dataset, the audio CNN outputs random activations (hallucinating Disgust).
-            # By zeroing out the audio, we trigger the network's Modality Dropout training pathway, 
-            # forcing it to rely 100% on the facial expressions (Video), which is much more robust!
-            audio_feat = np.zeros_like(audio_feat)
-            
             probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
             idx = int(np.argmax(probs))
             label = encoder.inverse_transform([idx])[0]
