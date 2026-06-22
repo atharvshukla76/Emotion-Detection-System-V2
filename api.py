@@ -157,14 +157,15 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
         duration = frame_count / fps if fps > 0 else 0.0
         
-        # Force start at 0.0 for short videos (dataset files) and read all frames
         if duration <= 4.5:
             t_start = 0.0
             start_frame = 0
             end_frame = float('inf')
         else:
-            start_frame = int(t_start * fps)
-            end_frame = int((t_start + 3.0) * fps)
+            # Align video window to be 3.6s (average RAVDESS length) centered around the 3.0s audio window
+            vid_t_start = max(0.0, t_start - 0.3)
+            start_frame = int(vid_t_start * fps)
+            end_frame = int((vid_t_start + 3.6) * fps)
         
         frame_idx = 0
         while cap.isOpened():
