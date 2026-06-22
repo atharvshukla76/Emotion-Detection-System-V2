@@ -86,7 +86,7 @@ def load_resources():
 def preprocess_audio(file_path):
     try:
         signal, _ = librosa.load(file_path, sr=SR)
-        if len(signal) == 0 or np.std(signal) < 0.005:
+        if len(signal) == 0 or np.std(signal) < 1e-4:
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
         # Trim silent boundaries from outer edges
