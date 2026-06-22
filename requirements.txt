@@ -10,3 +10,5 @@ python-multipart
 scipy
 soundfile
 opencv-python-headless
+torch
+transformers

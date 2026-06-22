@@ -8,6 +8,7 @@ import traceback
 import numpy as np
 import librosa
 import noisereduce as nr
+from transformers import pipeline
 import tensorflow as tf
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
@@ -48,6 +49,9 @@ app.add_middleware(
 # Global resource holders
 model = None
 encoder = None
+norm_data = None
+whisper_pipe = None
+text_emotion_pipe = None
 mean = None
 std = None
 vid_mean = None
@@ -55,7 +59,7 @@ vid_std = None
 
 @app.on_event("startup")
 def load_resources():
-    global model, encoder, mean, std, vid_mean, vid_std
+    global model, encoder, mean, std, vid_mean, vid_std, whisper_pipe, text_emotion_pipe
     try:
         model_path = os.path.join(MODEL_DIR, "multimodal_emotion_model.keras")
         encoder_path = os.path.join(MODEL_DIR, "encoder.pkl")
@@ -63,23 +67,30 @@ def load_resources():
         
         if not os.path.exists(model_path):
             print(f"[STARTUP WARNING] Multimodal model not found at {model_path}. You need to run training first to generate it.")
-            return
             
-        model = tf.keras.models.load_model(model_path)
-        with open(encoder_path, "rb") as f:
-            encoder = pickle.load(f)
-        with open(norm_path, "rb") as f:
-            norm = pickle.load(f)
-            mean = norm["mean"]
-            std = norm["std"]
-            vid_mean = norm.get("vid_mean")
-            vid_std = norm.get("vid_std")
-            
-        print("[STARTUP] Multimodal resources successfully loaded.")
-        print(f"[STARTUP] Classes: {list(encoder.classes_)}")
-        print(f"[STARTUP] Video normalization: {'loaded' if vid_mean is not None else 'not found'}")
+        else:
+            model = tf.keras.models.load_model(model_path)
+            with open(encoder_path, "rb") as f:
+                encoder = pickle.load(f)
+            with open(norm_path, "rb") as f:
+                norm = pickle.load(f)
+                mean = norm["mean"]
+                std = norm["std"]
+                vid_mean = norm.get("vid_mean")
+                vid_std = norm.get("vid_std")
+                
+            print("[STARTUP] Multimodal resources successfully loaded.")
+            print(f"[STARTUP] Classes: {list(encoder.classes_)}")
+            print(f"[STARTUP] Video normalization: {'loaded' if vid_mean is not None else 'not found'}")
+
+        print("Loading NLP models (Whisper + Roberta)...")
+        whisper_pipe = pipeline("automatic-speech-recognition", model="openai/whisper-tiny.en")
+        text_emotion_pipe = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", top_k=None)
+        print("NLP models loaded successfully!")
+        
     except Exception as e:
         print(f"[STARTUP ERROR] Resource load failed: {e}")
+        traceback.print_exc()
 
 # =====================================================================
 # 🔊 AUDIO PREPROCESSING
@@ -388,6 +399,7 @@ async def predict_emotion(file: UploadFile = File(...)):
         
         # Predict
         motion_mean = float(np.mean(np.abs(video_feat))) if not video_zeros else 0.0
+        transcript_text = ""
         
         # Override for completely silent and frozen states (baseline state)
         # Human breathing/balancing creates around 0.15-0.25 motion mean even when trying to be still.
@@ -399,6 +411,41 @@ async def predict_emotion(file: UploadFile = File(...)):
             print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}")
         else:
             probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
+            
+            # --- TRI-MODAL FUSION (Text + Audio + Video) ---
+            if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
+                try:
+                    # 1. Transcribe Audio
+                    whisper_out = whisper_pipe(audio_path)
+                    transcript_text = whisper_out.get("text", "").strip()
+                    if transcript_text:
+                        print(f"[DEBUG] Transcription: {transcript_text}")
+                        # 2. Analyze Text Emotion
+                        text_emotions = text_emotion_pipe(transcript_text)[0] # List of dicts
+                        label_map = {
+                            "joy": "Happy", "sadness": "Sad", "anger": "Angry",
+                            "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
+                        }
+                        
+                        # Initialize text probs array exactly matching encoder.classes_ order
+                        text_probs = np.zeros_like(probs)
+                        for res in text_emotions:
+                            target_label = label_map.get(res['label'])
+                            if target_label in encoder.classes_:
+                                idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
+                                text_probs[idx_class] += res['score']
+                        
+                        # 3. Fuse Probabilities (70% RAVDESS AV, 30% Text NLP)
+                        # We heavily weight the physical expressions, but let text strongly influence ties.
+                        print(f"[DEBUG] Base Probs: {probs}")
+                        print(f"[DEBUG] Text Probs: {text_probs}")
+                        probs = (probs * 0.7) + (text_probs * 0.3)
+                        probs = probs / np.sum(probs) # Re-normalize
+                        print(f"[DEBUG] Fused Probs: {probs}")
+                except Exception as e:
+                    print(f"[DEBUG] Tri-Modal Fusion failed: {e}")
+                    traceback.print_exc()
+            
             idx = int(np.argmax(probs))
             label = encoder.inverse_transform([idx])[0]
         
@@ -412,6 +459,7 @@ async def predict_emotion(file: UploadFile = File(...)):
             "emotion": label,
             "confidence": float(probs[idx]),
             "all_scores": confidences,
+            "transcription": transcript_text,
             "diagnostics": {
                 "face_detected_frames": face_detected_count,
                 "audio_features_zero": audio_zeros,
