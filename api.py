@@ -410,6 +410,12 @@ async def predict_emotion(file: UploadFile = File(...)):
             label = "Neutral"
             print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}")
         else:
+            # --- VISION-ONLY MAGNIFICATION ---
+            # If the user is silent, their facial optical flow is much smaller than the speaking actors in the training data.
+            # We magnify the subtle silent expressions so the network can categorize them correctly.
+            if audio_zeros:
+                video_feat = video_feat * 2.5
+                
             probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
             
             # --- TRI-MODAL FUSION (Text + Audio + Video) ---
@@ -435,11 +441,16 @@ async def predict_emotion(file: UploadFile = File(...)):
                                 idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
                                 text_probs[idx_class] += res['score']
                         
-                        # 3. Fuse Probabilities (70% RAVDESS AV, 30% Text NLP)
-                        # We heavily weight the physical expressions, but let text strongly influence ties.
+                        # 3. Fuse Probabilities (Dynamic Weighting)
+                        # We dynamically increase Text influence if the NLP model is highly confident.
+                        # This fixes the issue where "Sad" (which has low facial movement) gets overpowered by the Neutral vision baseline.
+                        text_conf = np.max(text_probs)
+                        text_weight = 0.6 if text_conf > 0.7 else (0.5 if text_conf > 0.4 else 0.3)
+                        av_weight = 1.0 - text_weight
+                        
                         print(f"[DEBUG] Base Probs: {probs}")
-                        print(f"[DEBUG] Text Probs: {text_probs}")
-                        probs = (probs * 0.7) + (text_probs * 0.3)
+                        print(f"[DEBUG] Text Probs: {text_probs} (Weight: {text_weight})")
+                        probs = (probs * av_weight) + (text_probs * text_weight)
                         probs = probs / np.sum(probs) # Re-normalize
                         print(f"[DEBUG] Fused Probs: {probs}")
                 except Exception as e:
