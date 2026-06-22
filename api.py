@@ -14,6 +14,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
+from PIL import Image
 
 # --- CONFIGURATION (Must match training constants) ---
 SR = 22050
@@ -52,6 +53,7 @@ encoder = None
 norm_data = None
 whisper_pipe = None
 text_emotion_pipe = None
+fer_pipe = None
 mean = None
 std = None
 vid_mean = None
@@ -86,7 +88,10 @@ def load_resources():
         print("Loading NLP models (Whisper + Roberta)...")
         whisper_pipe = pipeline("automatic-speech-recognition", model="openai/whisper-tiny.en")
         text_emotion_pipe = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", top_k=None)
-        print("NLP models loaded successfully!")
+        
+        print("Loading FER Image model...")
+        fer_pipe = pipeline("image-classification", model="dima806/facial_emotions_image_detection")
+        print("All models loaded successfully!")
         
     except Exception as e:
         print(f"[STARTUP ERROR] Resource load failed: {e}")
@@ -225,7 +230,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             cap.release()
             
     if len(raw_frames) < 2:
-        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0, None, None
 
     # First pass: collect all detected face boxes across frames
     face_boxes = []
@@ -304,8 +309,11 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         scale_correction = expected_w_face / stable_box[2]
         video_feat = video_feat * scale_correction
         print(f"[DEBUG] Applied video spatial scaling: {scale_correction:.2f}x")
-            
-    return video_feat, face_detected_count
+    middle_frame = None
+    if len(raw_frames) > 0:
+        middle_frame = raw_frames[len(raw_frames)//2]
+        
+    return video_feat, face_detected_count, middle_frame, stable_box
 
 # =====================================================================
 # 🎯 ENDPOINTS
@@ -381,7 +389,7 @@ async def predict_emotion(file: UploadFile = File(...)):
         print(f"[DEBUG] audio_feat final shape: {audio_feat.shape}")
         
         # Preprocess Video, stack temporal channels, and normalize (synchronized using t_start from audio)
-        video_feat, face_detected_count = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
+        video_feat, face_detected_count, middle_frame, stable_box = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
         
         # Trigger modality dropout if no face is detected or if video is empty
         video_zeros = (face_detected_count == 0) or bool(np.all(video_feat == 0))
@@ -418,44 +426,73 @@ async def predict_emotion(file: UploadFile = File(...)):
                 
             probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
             
-            # --- TRI-MODAL FUSION (Text + Audio + Video) ---
+            # --- QUAD-MODAL FUSION (Static FER + Text NLP + Dynamic RAVDESS AV) ---
+            
+            # 1. Static Facial Expression Recognition (FER)
+            fer_probs = np.zeros_like(probs)
+            if fer_pipe is not None and middle_frame is not None and stable_box is not None:
+                try:
+                    # Crop face from middle frame
+                    x_b, y_b, w_b, h_b = stable_box
+                    face_crop = middle_frame[y_b:y_b+h_b, x_b:x_b+w_b]
+                    if face_crop.size > 0:
+                        face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+                        pil_img = Image.fromarray(face_rgb)
+                        
+                        fer_res = fer_pipe(pil_img) # [{'label': 'happy', 'score': 0.9}, ...]
+                        label_map_fer = {
+                            "happy": "Happy", "sad": "Sad", "angry": "Angry",
+                            "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
+                        }
+                        for res in fer_res:
+                            target_label = label_map_fer.get(res['label'])
+                            if target_label in encoder.classes_:
+                                idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
+                                fer_probs[idx_class] += res['score']
+                        print(f"[DEBUG] FER Probs: {fer_probs}")
+                except Exception as e:
+                    print(f"[DEBUG] FER Processing failed: {e}")
+            
+            # 2. Text NLP Fusion (if speaking)
+            text_probs = np.zeros_like(probs)
             if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
                 try:
-                    # 1. Transcribe Audio
                     whisper_out = whisper_pipe(audio_path)
                     transcript_text = whisper_out.get("text", "").strip()
                     if transcript_text:
                         print(f"[DEBUG] Transcription: {transcript_text}")
-                        # 2. Analyze Text Emotion
-                        text_emotions = text_emotion_pipe(transcript_text)[0] # List of dicts
-                        label_map = {
+                        text_emotions = text_emotion_pipe(transcript_text)[0]
+                        label_map_text = {
                             "joy": "Happy", "sadness": "Sad", "anger": "Angry",
                             "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
                         }
-                        
-                        # Initialize text probs array exactly matching encoder.classes_ order
-                        text_probs = np.zeros_like(probs)
                         for res in text_emotions:
-                            target_label = label_map.get(res['label'])
+                            target_label = label_map_text.get(res['label'])
                             if target_label in encoder.classes_:
                                 idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
                                 text_probs[idx_class] += res['score']
-                        
-                        # 3. Fuse Probabilities (Dynamic Weighting)
-                        # We dynamically increase Text influence if the NLP model is highly confident.
-                        # This fixes the issue where "Sad" (which has low facial movement) gets overpowered by the Neutral vision baseline.
-                        text_conf = np.max(text_probs)
-                        text_weight = 0.6 if text_conf > 0.7 else (0.5 if text_conf > 0.4 else 0.3)
-                        av_weight = 1.0 - text_weight
-                        
-                        print(f"[DEBUG] Base Probs: {probs}")
-                        print(f"[DEBUG] Text Probs: {text_probs} (Weight: {text_weight})")
-                        probs = (probs * av_weight) + (text_probs * text_weight)
-                        probs = probs / np.sum(probs) # Re-normalize
-                        print(f"[DEBUG] Fused Probs: {probs}")
+                        print(f"[DEBUG] Text Probs: {text_probs}")
                 except Exception as e:
-                    print(f"[DEBUG] Tri-Modal Fusion failed: {e}")
-                    traceback.print_exc()
+                    print(f"[DEBUG] NLP Processing failed: {e}")
+            
+            # 3. Ultimate Quad-Modal Fusion Weights
+            print(f"[DEBUG] Base AV Probs: {probs}")
+            if audio_zeros:
+                # Vision-Only Mode: Rely heavily on Static FER (70%), since RAVDESS AV (30%) gets confused by silent lack-of-movement
+                # Only fuse if FER was successfully generated
+                if np.sum(fer_probs) > 0:
+                    probs = (probs * 0.3) + (fer_probs * 0.7)
+            else:
+                # Voice + Meaning Mode: Combine AV, FER, and Text
+                text_conf = np.max(text_probs) if np.sum(text_probs) > 0 else 0
+                text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
+                fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
+                av_weight = 1.0 - text_weight - fer_weight
+                
+                probs = (probs * av_weight) + (fer_probs * fer_weight) + (text_probs * text_weight)
+                
+            probs = probs / (np.sum(probs) + 1e-6) # Re-normalize
+            print(f"[DEBUG] Final Fused Probs: {probs}")
             
             idx = int(np.argmax(probs))
             label = encoder.inverse_transform([idx])[0]
