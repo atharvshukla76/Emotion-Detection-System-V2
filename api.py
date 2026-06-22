@@ -86,7 +86,7 @@ def load_resources():
 def preprocess_audio(file_path):
     try:
         signal, _ = librosa.load(file_path, sr=SR)
-        if len(signal) == 0 or np.std(signal) < 0.003:
+        if len(signal) == 0 or np.std(signal) < 0.015:
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
         # Trim silent boundaries from outer edges
@@ -225,7 +225,11 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             avg_y = int(np.median([f[1] for f in face_boxes]))
             avg_w = int(np.median([f[2] for f in face_boxes]))
             avg_h = int(np.median([f[3] for f in face_boxes]))
-            stable_box = (avg_x, avg_y, avg_w, avg_h)
+        avg_x = int(np.median([f[0] for f in face_boxes]))
+        avg_y = int(np.median([f[1] for f in face_boxes]))
+        avg_w = int(np.median([f[2] for f in face_boxes]))
+        avg_h = int(np.median([f[3] for f in face_boxes]))
+        stable_box = (avg_x, avg_y, avg_w, avg_h)
     else:
         stable_box = None
         face_detected_count = 0
@@ -236,37 +240,10 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         h, w = gray.shape
         
-        if stable_box is not None:
-            x, y, w_face, h_face = stable_box
-            # Reconstruct virtual frame based on RAVDESS dataset proportions
-            w_virtual = int(w_face / 0.325)
-            h_virtual = int(h_face / 0.578)
-            x_virtual = x - int(w_virtual * 0.333)
-            y_virtual = y - int(h_virtual * 0.233)
-            
-            x_start_v = max(0, x_virtual)
-            y_start_v = max(0, y_virtual)
-            x_end_v = min(w, x_virtual + w_virtual)
-            y_end_v = min(h, y_virtual + h_virtual)
-            
-            pad_left = max(0, -x_virtual)
-            pad_top = max(0, -y_virtual)
-            
-            virtual_gray = np.ones((h_virtual, w_virtual), dtype=np.uint8) * 128
-            
-            if y_start_v < y_end_v and x_start_v < x_end_v:
-                cropped = gray[y_start_v:y_end_v, x_start_v:x_end_v]
-                h_c, w_c = cropped.shape
-                # Ensure we don't go out of bounds on the virtual frame
-                pad_bottom = min(pad_top + h_c, h_virtual)
-                pad_right = min(pad_left + w_c, w_virtual)
-                virtual_gray[pad_top:pad_bottom, pad_left:pad_right] = cropped[:pad_bottom-pad_top, :pad_right-pad_left]
-            
-            eyes = virtual_gray[int(h_virtual*0.15):int(h_virtual*0.45), int(w_virtual*0.2):int(w_virtual*0.8)]
-            mouth = virtual_gray[int(h_virtual*0.65):int(h_virtual*0.9), int(w_virtual*0.25):int(w_virtual*0.75)]
-        else:
-            eyes = gray[int(h*0.15):int(h*0.45), int(w*0.2):int(w*0.8)]
-            mouth = gray[int(h*0.65):int(h*0.9), int(w*0.25):int(w*0.75)]
+        # Use static geometric crop matching the training pipeline exactly
+        # The model relies on the background motion (head bobbing relative to background).
+        eyes = gray[int(h*0.15):int(h*0.45), int(w*0.2):int(w*0.8)]
+        mouth = gray[int(h*0.65):int(h*0.9), int(w*0.25):int(w*0.75)]
             
         if eyes.size == 0 or mouth.size == 0:
             continue
@@ -388,14 +365,21 @@ async def predict_emotion(file: UploadFile = File(...)):
         motion_mean = float(np.mean(np.abs(video_feat))) if not video_zeros else 0.0
         
         # Override for completely silent and frozen states (baseline state)
-        # We use a mean threshold because max can be triggered by a single noisy webcam pixel.
-        if audio_zeros and motion_mean < 0.10:
+        # Human breathing/balancing creates around 0.15-0.25 motion mean even when trying to be still.
+        if audio_zeros and motion_mean < 0.25:
             idx = int(np.where(encoder.classes_ == "Neutral")[0][0])
             probs = np.zeros(len(encoder.classes_), dtype=float)
             probs[idx] = 1.0
             label = "Neutral"
             print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}")
         else:
+            # FORCE MODALITY DROPOUT FOR LIVE AUDIO:
+            # Since the user's webcam microphone has vastly different room acoustics and noise profiles 
+            # than the studio-recorded RAVDESS dataset, the audio CNN outputs random activations (hallucinating Disgust).
+            # By zeroing out the audio, we trigger the network's Modality Dropout training pathway, 
+            # forcing it to rely 100% on the facial expressions (Video), which is much more robust!
+            audio_feat = np.zeros_like(audio_feat)
+            
             probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
             idx = int(np.argmax(probs))
             label = encoder.inverse_transform([idx])[0]
