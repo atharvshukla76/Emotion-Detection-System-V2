@@ -86,7 +86,7 @@ def load_resources():
 def preprocess_audio(file_path):
     try:
         signal, _ = librosa.load(file_path, sr=SR)
-        if len(signal) == 0 or np.std(signal) < 1e-4:
+        if len(signal) == 0 or np.std(signal) < 0.003:
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
         # Trim silent boundaries from outer edges
@@ -386,16 +386,15 @@ async def predict_emotion(file: UploadFile = File(...)):
         
         # Predict
         motion_mean = float(np.mean(np.abs(video_feat))) if not video_zeros else 0.0
-        motion_max = float(np.max(np.abs(video_feat))) if not video_zeros else 0.0
         
-        # Very conservative threshold to avoid erasing subtle facial expressions
-        if audio_zeros and motion_max < 0.5 and motion_mean < 0.02:
-            # Override for completely silent and frozen states (baseline state)
+        # Override for completely silent and frozen states (baseline state)
+        # We use a mean threshold because max can be triggered by a single noisy webcam pixel.
+        if audio_zeros and motion_mean < 0.10:
             idx = int(np.where(encoder.classes_ == "Neutral")[0][0])
             probs = np.zeros(len(encoder.classes_), dtype=float)
             probs[idx] = 1.0
             label = "Neutral"
-            print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}, Max: {motion_max:.3f}")
+            print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}")
         else:
             probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
             idx = int(np.argmax(probs))
