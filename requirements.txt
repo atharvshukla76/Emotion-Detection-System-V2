@@ -4,7 +4,7 @@ tensorflow-cpu
 noisereduce
 librosa
 scikit-learn
-numpy
+numpy<2
 pydantic
 python-multipart
 scipy
