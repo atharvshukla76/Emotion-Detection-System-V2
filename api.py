@@ -182,7 +182,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
     cap = cv2.VideoCapture(video_path)
     
     # Initialize face cascade detector
-    cascade_path = os.path.join(os.path.dirname(__file__), 'haarcascade_frontalface_default.xml')
+    cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
     face_cascade = cv2.CascadeClassifier(cascade_path)
     
     raw_frames = []
@@ -329,7 +329,7 @@ async def read_root():
 async def health_check():
     import cv2
     import os
-    cascade_path = os.path.join(os.path.dirname(__file__), 'haarcascade_frontalface_default.xml')
+    cascade_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
     cascade_exists = os.path.exists(cascade_path)
     try:
         clf = cv2.CascadeClassifier(cascade_path)
