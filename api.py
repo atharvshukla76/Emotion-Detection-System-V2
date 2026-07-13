@@ -124,7 +124,7 @@ def preprocess_audio(file_path):
         signal = signal * (0.0095 / std_sig)
             
         # Trim silent boundaries from outer edges
-        trimmed, index = librosa.effects.trim(signal, top_db=30)
+        trimmed, index = librosa.effects.trim(signal, top_db=50)
         start_offset = 0
         if len(trimmed) > 0:
             signal = trimmed
