@@ -573,7 +573,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     if is_sarcasm:
                         print(f"[DEBUG] Sarcasm Detected! Text={top_text_emotion}, Face={top_fer_emotion}. Overriding Text.")
                         text_weight = 0.0
-                        fer_weight = 0.6  # Boost visual trust
+                        fer_weight = 1.0  # Absolute visual trust (forces av_weight to 0.0)
                 
                 av_weight = 1.0 - text_weight - fer_weight
                 
