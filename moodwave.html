@@ -762,8 +762,8 @@
     function initFaceTracker() {
       if (tracker) return;
       tracker = new tracking.ObjectTracker('face');
-      tracker.setInitialScale(4);
-      tracker.setStepSize(2);
+      tracker.setInitialScale(2.5); // Better detection for typical distances
+      tracker.setStepSize(1.7);
       tracker.setEdgesDensity(0.1);
 
       const fctx = faceCanvas.getContext('2d');
@@ -781,7 +781,36 @@
         if (state === 'RECORDING' || state === 'ANALYSING' || state === 'RESULT' || state === 'IDLE') {
           if (event.data.length > 0) {
             // Find the largest face detected
-            const rect = event.data.reduce((max, f) => (f.width * f.height > max.width * max.height) ? f : max, event.data[0]);
+            const rawRect = event.data.reduce((max, f) => (f.width * f.height > max.width * max.height) ? f : max, event.data[0]);
+            
+            // Calculate scale and offset for object-fit: cover
+            const vidW = webcamPreview.videoWidth || 640;
+            const vidH = webcamPreview.videoHeight || 480;
+            const vidRatio = vidW / vidH;
+            const canvasRatio = faceCanvas.width / faceCanvas.height;
+            
+            let scale, offsetX = 0, offsetY = 0;
+            if (vidRatio > canvasRatio) {
+              // Video is wider - cropped on sides
+              scale = faceCanvas.height / vidH;
+              offsetX = (faceCanvas.width - vidW * scale) / 2;
+            } else {
+              // Video is taller - cropped on top/bottom
+              scale = faceCanvas.width / vidW;
+              offsetY = (faceCanvas.height - vidH * scale) / 2;
+            }
+
+            // Map base coordinates
+            let baseW = rawRect.width * scale;
+            let baseH = rawRect.height * scale;
+            let baseX = (rawRect.x * scale) + offsetX;
+            let baseY = (rawRect.y * scale) + offsetY;
+
+            // Apply horizontal mirroring (webcam is flipped)
+            let finalX = faceCanvas.width - baseX - baseW;
+            let finalY = baseY;
+
+            const rect = { x: finalX, y: finalY, width: baseW, height: baseH };
             lastFaceRect = rect;
 
             // Draw bounding box
@@ -797,9 +826,9 @@
             if (state === 'RECORDING') {
               label = "RECORDING EMOTION...";
             } else if (state === 'ANALYSING') {
-              label = "ANALYSING...";
-            } else if (state === 'RESULT' && currentEmotionLabel) {
-              label = currentEmotionLabel.toUpperCase();
+              label = "PROCESSING NEURAL PATTERNS...";
+            } else if (state === 'RESULT') {
+              label = currentEmotionLabel;
             }
 
             fctx.fillText(label, rect.x, rect.y - 10);
@@ -809,7 +838,6 @@
             fctx.strokeStyle = currentEmotionColor;
             fctx.lineWidth = 3;
             fctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-
             fctx.fillStyle = currentEmotionColor;
             fctx.font = 'bold 14px Share Tech Mono';
             fctx.fillText(currentEmotionLabel.toUpperCase(), rect.x, rect.y - 10);
