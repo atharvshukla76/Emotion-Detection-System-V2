@@ -553,6 +553,21 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 text_conf = np.max(text_probs) if np.sum(text_probs) > 0 else 0
                 text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
                 fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
+                
+                # --- Sarcasm Override (Incongruence Detection) ---
+                if text_weight > 0.0 and np.sum(fer_probs) > 0:
+                    top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
+                    top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
+                    
+                    positive_emotions = ["Happy"]
+                    negative_emotions = ["Angry", "Disgust", "Fear", "Sad"]
+                    
+                    # If words are positive but face is negative, it's sarcasm. Ignore words.
+                    if top_text_emotion in positive_emotions and top_fer_emotion in negative_emotions:
+                        print(f"[DEBUG] Sarcasm Detected! Text={top_text_emotion}, Face={top_fer_emotion}. Overriding Text.")
+                        text_weight = 0.0
+                        fer_weight = 0.6  # Boost visual trust
+                
                 av_weight = 1.0 - text_weight - fer_weight
                 
                 probs = (probs * av_weight) + (fer_probs * fer_weight) + (text_probs * text_weight)
