@@ -61,6 +61,7 @@ vid_mean = None
 vid_std = None
 # Asynchronous State Buffer for NLP
 last_known_text_probs = None
+last_known_transcription = ""
 @app.on_event("startup")
 def load_resources():
     global model, encoder, mean, std, vid_mean, vid_std, whisper_pipe, text_emotion_pipe
@@ -255,11 +256,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             avg_y = int(np.median([f[1] for f in face_boxes]))
             avg_w = int(np.median([f[2] for f in face_boxes]))
             avg_h = int(np.median([f[3] for f in face_boxes]))
-        avg_x = int(np.median([f[0] for f in face_boxes]))
-        avg_y = int(np.median([f[1] for f in face_boxes]))
-        avg_w = int(np.median([f[2] for f in face_boxes]))
-        avg_h = int(np.median([f[3] for f in face_boxes]))
-        stable_box = (avg_x, avg_y, avg_w, avg_h)
+            stable_box = (avg_x, avg_y, avg_w, avg_h)
     else:
         stable_box = None
         face_detected_count = 0
@@ -283,7 +280,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         processed_frames.append(np.vstack([eyes_res, mouth_res]))
         
     if len(processed_frames) < 2:
-        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0, None, None
         
     indices = np.linspace(0, len(processed_frames) - 1, target_frames).astype(int)
     sel_frames = [processed_frames[i] for i in indices]
@@ -402,7 +399,7 @@ async def predict_emotion(file: UploadFile = File(...)):
             if vid_mean is not None and vid_std is not None:
                 video_feat = (video_feat - vid_mean.squeeze(0)) / (vid_std.squeeze(0) + 1e-6)
         else:
-            video_feat = np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32)
+            video_feat = np.zeros((64, 64, 30), dtype=np.float32)
             video_zeros = True
             
         video_feat = np.expand_dims(video_feat, axis=0) # Shape: (1, 64, 64, 30)
@@ -434,9 +431,14 @@ async def predict_emotion(file: UploadFile = File(...)):
             fer_probs = np.zeros_like(probs)
             if fer_pipe is not None and middle_frame is not None and stable_box is not None:
                 try:
-                    # Crop face from middle frame
+                    # Crop face from middle frame with safe boundary clamping
                     x_b, y_b, w_b, h_b = stable_box
-                    face_crop = middle_frame[y_b:y_b+h_b, x_b:x_b+w_b]
+                    h_m, w_m, _ = middle_frame.shape
+                    
+                    x1, y1 = max(0, x_b), max(0, y_b)
+                    x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
+                    
+                    face_crop = middle_frame[y1:y2, x1:x2]
                     if face_crop.size > 0:
                         face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
                         pil_img = Image.fromarray(face_rgb)
@@ -459,7 +461,7 @@ async def predict_emotion(file: UploadFile = File(...)):
             text_probs = np.zeros_like(probs)
             
             def run_nlp_async(audio_p):
-                global last_known_text_probs
+                global last_known_text_probs, last_known_transcription
                 try:
                     whisper_out = whisper_pipe(audio_p)
                     transcript_text = whisper_out.get("text", "").strip()
@@ -478,6 +480,7 @@ async def predict_emotion(file: UploadFile = File(...)):
                                 idx_c = int(np.where(encoder.classes_ == t_label)[0][0])
                                 temp_probs[idx_c] += res['score']
                         last_known_text_probs = temp_probs
+                        last_known_transcription = transcript_text
                 except Exception as e:
                     print(f"[DEBUG Async] NLP Processing failed: {e}")
 
@@ -492,6 +495,8 @@ async def predict_emotion(file: UploadFile = File(...)):
             if getattr(_buf, 'last_known_text_probs', None) is not None:
                 text_probs = _buf.last_known_text_probs
                 print(f"[DEBUG] Using Buffered Text Probs: {text_probs}")
+            if getattr(_buf, 'last_known_transcription', None) is not None and _buf.last_known_transcription != "":
+                transcript_text = _buf.last_known_transcription
             
             # 3. Ultimate Quad-Modal Fusion Weights
             print(f"[DEBUG] Base AV Probs: {probs}")
