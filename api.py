@@ -3,6 +3,7 @@ import cv2
 import pickle
 import shutil
 import tempfile
+import threading
 import subprocess
 import traceback
 import numpy as np
@@ -58,7 +59,8 @@ mean = None
 std = None
 vid_mean = None
 vid_std = None
-
+# Asynchronous State Buffer for NLP
+last_known_text_probs = None
 @app.on_event("startup")
 def load_resources():
     global model, encoder, mean, std, vid_mean, vid_std, whisper_pipe, text_emotion_pipe
@@ -453,27 +455,42 @@ async def predict_emotion(file: UploadFile = File(...)):
                 except Exception as e:
                     print(f"[DEBUG] FER Processing failed: {e}")
             
-            # 2. Text NLP Fusion (if speaking)
+                        # 2. Text NLP Fusion (Asynchronous State Buffer)
             text_probs = np.zeros_like(probs)
-            if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
+            
+            def run_nlp_async(audio_p):
+                global last_known_text_probs
                 try:
-                    whisper_out = whisper_pipe(audio_path)
+                    whisper_out = whisper_pipe(audio_p)
                     transcript_text = whisper_out.get("text", "").strip()
                     if transcript_text:
-                        print(f"[DEBUG] Transcription: {transcript_text}")
+                        print(f"[DEBUG Async] Transcription: {transcript_text}")
                         text_emotions = text_emotion_pipe(transcript_text)[0]
+                        
+                        temp_probs = np.zeros_like(probs)
                         label_map_text = {
                             "joy": "Happy", "sadness": "Sad", "anger": "Angry",
                             "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
                         }
                         for res in text_emotions:
-                            target_label = label_map_text.get(res['label'])
-                            if target_label in encoder.classes_:
-                                idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
-                                text_probs[idx_class] += res['score']
-                        print(f"[DEBUG] Text Probs: {text_probs}")
+                            t_label = label_map_text.get(res['label'])
+                            if t_label in encoder.classes_:
+                                idx_c = int(np.where(encoder.classes_ == t_label)[0][0])
+                                temp_probs[idx_c] += res['score']
+                        last_known_text_probs = temp_probs
                 except Exception as e:
-                    print(f"[DEBUG] NLP Processing failed: {e}")
+                    print(f"[DEBUG Async] NLP Processing failed: {e}")
+
+            # If speaking, launch NLP in the background so it doesn't freeze the video
+            if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
+                nlp_thread = threading.Thread(target=run_nlp_async, args=(audio_path,))
+                nlp_thread.start()
+            
+            # Pull from the state buffer instantly without waiting
+            global last_known_text_probs
+            if last_known_text_probs is not None:
+                text_probs = last_known_text_probs
+                print(f"[DEBUG] Using Buffered Text Probs: {text_probs}")
             
             # 3. Ultimate Quad-Modal Fusion Weights
             print(f"[DEBUG] Base AV Probs: {probs}")
