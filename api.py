@@ -384,6 +384,7 @@ async def get_result(task_id: str):
         
     if task["status"] == "completed":
         res = task["result"]
+        res["status"] = "completed"
         del prediction_tasks[task_id]
         return res
         
