@@ -1016,11 +1016,16 @@
         const formData = new FormData();
         formData.append('file', blob, `recording.${ext}`);
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
+
         const response = await fetch('/predict', {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: controller.signal
           // No Content-Type header — let the browser set multipart boundary
         });
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errText = await response.text().catch(() => '');
@@ -1033,7 +1038,11 @@
         console.error('Analysis failed:', err);
         cardTitle.textContent = "Analysis Failed";
         cardTitle.style.color = "var(--color-angry)";
-        cardInstructions.textContent = '⚠ Could not reach the AI server. Check your connection.';
+        if (err.name === 'AbortError') {
+          cardInstructions.textContent = '⏱ Server is still processing. Please try again in a moment.';
+        } else {
+          cardInstructions.textContent = '⚠ Could not reach the AI server. Check your connection.';
+        }
         btnText.textContent = "Try Again";
         btnIcon.textContent = "↺";
         startBtn.disabled = false;
