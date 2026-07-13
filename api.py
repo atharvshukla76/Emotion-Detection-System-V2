@@ -392,6 +392,12 @@ async def get_result(task_id: str):
 
 def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_path: str):
     try:
+        # Isolate and reset the Asynchronous State Buffer for this new video
+        import sys
+        _buf = sys.modules[__name__]
+        _buf.last_known_text_probs = None
+        _buf.last_known_transcription = ""
+
         # Extract Audio track via ffmpeg (cross-platform)
         subprocess.run(
             ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "1", audio_path],
