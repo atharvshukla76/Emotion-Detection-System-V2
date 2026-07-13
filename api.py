@@ -16,6 +16,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from PIL import Image
+import uuid
+
+prediction_tasks = {}
 
 # --- CONFIGURATION (Must match training constants) ---
 SR = 22050
@@ -342,10 +345,13 @@ async def health_check():
     }
 
 @app.post("/predict")
-async def predict_emotion(file: UploadFile = File(...)):
+async def predict_emotion_endpoint(file: UploadFile = File(...)):
     if model is None:
         raise HTTPException(status_code=503, detail="Model not initialized. Run training and ensure multimodal_emotion_model.keras exists.")
         
+    task_id = str(uuid.uuid4())
+    prediction_tasks[task_id] = {"status": "processing"}
+    
     # Create a secure temporary directory to isolate file processing
     temp_dir = tempfile.mkdtemp()
     video_path = os.path.join(temp_dir, "uploaded_capture.mp4")
@@ -356,6 +362,35 @@ async def predict_emotion(file: UploadFile = File(...)):
         with open(video_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
+        # Start background processing
+        thread = threading.Thread(target=process_prediction_task, args=(task_id, temp_dir, video_path, audio_path))
+        thread.start()
+        
+        return {"task_id": task_id}
+    except Exception as e:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/result/{task_id}")
+async def get_result(task_id: str):
+    task = prediction_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    if task["status"] == "failed":
+        error = task.get("error", "Unknown error")
+        del prediction_tasks[task_id]
+        raise HTTPException(status_code=500, detail=error)
+        
+    if task["status"] == "completed":
+        res = task["result"]
+        del prediction_tasks[task_id]
+        return res
+        
+    return {"status": "processing"}
+
+def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_path: str):
+    try:
         # Extract Audio track via ffmpeg (cross-platform)
         subprocess.run(
             ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "1", audio_path],
@@ -525,21 +560,27 @@ async def predict_emotion(file: UploadFile = File(...)):
             for i, p in enumerate(probs)
         }
         
-        return {
-            "time": str(datetime.now()),
-            "emotion": label,
-            "confidence": float(probs[idx]),
-            "all_scores": confidences,
-            "transcription": transcript_text,
-            "diagnostics": {
-                "face_detected_frames": face_detected_count,
-                "audio_features_zero": audio_zeros,
-                "video_features_zero": video_zeros
+        prediction_tasks[task_id] = {
+            "status": "completed",
+            "result": {
+                "time": str(datetime.now()),
+                "emotion": label,
+                "confidence": float(probs[idx]),
+                "all_scores": confidences,
+                "transcription": transcript_text,
+                "diagnostics": {
+                    "face_detected_frames": face_detected_count,
+                    "audio_features_zero": audio_zeros,
+                    "video_features_zero": video_zeros
+                }
             }
         }
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        prediction_tasks[task_id] = {
+            "status": "failed",
+            "error": f"Prediction failed: {str(e)}"
+        }
     finally:
         # Cleanup temporary files
         shutil.rmtree(temp_dir, ignore_errors=True)

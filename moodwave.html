@@ -1044,23 +1044,44 @@
         const formData = new FormData();
         formData.append('file', blob, `recording.${ext}`);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
-
-        const response = await fetch('/predict', {
+        // 1. Submit the video file to the asynchronous endpoint (returns immediately)
+        const initResponse = await fetch('/predict', {
           method: 'POST',
-          body: formData,
-          signal: controller.signal
-          // No Content-Type header — let the browser set multipart boundary
+          body: formData
         });
-        clearTimeout(timeoutId);
 
-        if (!response.ok) {
-          const errText = await response.text().catch(() => '');
-          throw new Error(`Server error (${response.status}): ${errText}`);
+        if (!initResponse.ok) {
+          const errText = await initResponse.text().catch(() => '');
+          throw new Error(`Server error (${initResponse.status}): ${errText}`);
         }
 
-        const result = await response.json();
+        const initResult = await initResponse.json();
+        const taskId = initResult.task_id;
+
+        // 2. Poll for the result until complete (completely avoids 60s Hugging Face timeout)
+        let result = null;
+        while (true) {
+          // Wait 2 seconds between polls
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          const pollResponse = await fetch(`/result/${taskId}`);
+          
+          if (!pollResponse.ok) {
+             const errText = await pollResponse.text().catch(() => '');
+             throw new Error(`Server error (${pollResponse.status}): ${errText}`);
+          }
+          
+          const pollResult = await pollResponse.json();
+          
+          if (pollResult.status === 'completed') {
+             result = pollResult;
+             break;
+          } else if (pollResult.status === 'failed') {
+             throw new Error(pollResult.error || 'Unknown prediction error');
+          }
+          // if status is 'processing', loop will continue automatically
+        }
+
         showResults(result);
       } catch (err) {
         console.error('Analysis failed:', err);
