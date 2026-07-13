@@ -562,8 +562,15 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     positive_emotions = ["Happy"]
                     negative_emotions = ["Angry", "Disgust", "Fear", "Sad"]
                     
-                    # If words are positive but face is negative, it's sarcasm. Ignore words.
+                    is_sarcasm = False
+                    # Case 1: Positive words + Negative face (e.g., "I'm so happy" while glaring)
                     if top_text_emotion in positive_emotions and top_fer_emotion in negative_emotions:
+                        is_sarcasm = True
+                    # Case 2: Negative words + Positive face (e.g., "This is terrible" while laughing)
+                    elif top_text_emotion in negative_emotions and top_fer_emotion in positive_emotions:
+                        is_sarcasm = True
+                        
+                    if is_sarcasm:
                         print(f"[DEBUG] Sarcasm Detected! Text={top_text_emotion}, Face={top_fer_emotion}. Overriding Text.")
                         text_weight = 0.0
                         fer_weight = 0.6  # Boost visual trust
