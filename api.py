@@ -115,7 +115,7 @@ def preprocess_audio(file_path):
             signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.85)
             
         std_sig = np.std(signal)
-        if len(signal) == 0 or std_sig < 0.015:
+        if len(signal) == 0 or std_sig < 0.002:
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
         # DYNAMIC AMPLITUDE SCALING
@@ -124,7 +124,7 @@ def preprocess_audio(file_path):
         signal = signal * (0.0095 / std_sig)
             
         # Trim silent boundaries from outer edges
-        trimmed, index = librosa.effects.trim(signal, top_db=50)
+        trimmed, index = librosa.effects.trim(signal, top_db=60)
         start_offset = 0
         if len(trimmed) > 0:
             signal = trimmed
