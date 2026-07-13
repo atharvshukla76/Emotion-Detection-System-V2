@@ -455,7 +455,7 @@ async def predict_emotion(file: UploadFile = File(...)):
                 except Exception as e:
                     print(f"[DEBUG] FER Processing failed: {e}")
             
-                        # 2. Text NLP Fusion (Asynchronous State Buffer)
+            # 2. Text NLP Fusion (Asynchronous State Buffer)
             text_probs = np.zeros_like(probs)
             
             def run_nlp_async(audio_p):
@@ -487,9 +487,10 @@ async def predict_emotion(file: UploadFile = File(...)):
                 nlp_thread.start()
             
             # Pull from the state buffer instantly without waiting
-            global last_known_text_probs
-            if last_known_text_probs is not None:
-                text_probs = last_known_text_probs
+            import sys
+            _buf = sys.modules[__name__]
+            if getattr(_buf, 'last_known_text_probs', None) is not None:
+                text_probs = _buf.last_known_text_probs
                 print(f"[DEBUG] Using Buffered Text Probs: {text_probs}")
             
             # 3. Ultimate Quad-Modal Fusion Weights
