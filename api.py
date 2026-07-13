@@ -530,6 +530,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
                 nlp_thread = threading.Thread(target=run_nlp_async, args=(audio_path,))
                 nlp_thread.start()
+                nlp_thread.join(timeout=3.0)  # Wait for background transcription to complete
             
             # Pull from the state buffer instantly without waiting
             import sys
