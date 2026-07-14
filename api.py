@@ -555,25 +555,29 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
                 
                 # --- Universal Sarcasm & Deception Override (Contextual Consensus) ---
-                if np.sum(text_probs) > 0 and np.sum(fer_probs) > 0:
+                if np.sum(text_probs) > 0:
                     top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
-                    top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
-                    top_av_emotion = encoder.classes_[int(np.argmax(probs))]
-                    
                     text_confidence = np.max(text_probs)
-                    fer_confidence = np.max(fer_probs)
+                    top_av_emotion = encoder.classes_[int(np.argmax(probs))]
                     av_confidence = np.max(probs)
+                    
+                    has_fer = np.sum(fer_probs) > 0
+                    if has_fer:
+                        top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
+                        fer_confidence = np.max(fer_probs)
+                    else:
+                        top_fer_emotion = None
+                        fer_confidence = 0.0
                     
                     is_sarcasm = False
                     
                     # Scenario A: Face and Tone AGREE, but words DISAGREE.
-                    # Example: Says "I am happy", but face is flat and tone is flat. 
-                    if top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
+                    if has_fer and top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
                         is_sarcasm = True
                         print(f"[DEBUG] Contextual Sarcasm! Face & Tone agree on {top_fer_emotion}, but Text says {top_text_emotion}.")
                         
-                    # Scenario B: Text strongly contradicts EVERYTHING else (no consensus)
-                    elif top_text_emotion != top_fer_emotion and top_text_emotion != top_av_emotion:
+                    # Scenario B: Text strongly contradicts the physical context (Tone or Tone+Face)
+                    elif top_text_emotion != top_av_emotion and (not has_fer or top_text_emotion != top_fer_emotion):
                         # If text is the odd one out, and Face/AV have decent confidence, the text is a lie.
                         if fer_confidence > 0.30 or av_confidence > 0.30:
                             is_sarcasm = True
@@ -589,7 +593,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                         if total_conf > 0:
                             fer_weight = fer_confidence / total_conf
                         else:
-                            fer_weight = 0.5
+                            fer_weight = 0.0
                         # av_weight will automatically become 1.0 - fer_weight later
                 
                 av_weight = 1.0 - text_weight - fer_weight
