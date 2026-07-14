@@ -554,24 +554,23 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
                 fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
                 
-                # --- Sarcasm Override (Incongruence Detection) ---
-                if text_weight > 0.0 and np.sum(fer_probs) > 0:
+                # --- Universal Sarcasm Override (Incongruence Detection) ---
+                if np.sum(text_probs) > 0 and np.sum(fer_probs) > 0:
                     top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
                     top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
                     
-                    positive_emotions = ["Happy"]
-                    negative_emotions = ["Angry", "Disgust", "Fear", "Sad"]
+                    text_confidence = np.max(text_probs)
+                    fer_confidence = np.max(fer_probs)
                     
                     is_sarcasm = False
-                    # Case 1: Positive words + Negative face (e.g., "I'm so happy" while glaring)
-                    if top_text_emotion in positive_emotions and top_fer_emotion in negative_emotions:
-                        is_sarcasm = True
-                    # Case 2: Negative words + Positive face (e.g., "This is terrible" while laughing)
-                    elif top_text_emotion in negative_emotions and top_fer_emotion in positive_emotions:
-                        is_sarcasm = True
-                        
+                    # Detect ANY incongruence between Text and Face, provided the models are confident
+                    if top_text_emotion != top_fer_emotion:
+                        # Prevent false positives on blurry frames or mumbled words
+                        if text_confidence > 0.4 and fer_confidence > 0.35:
+                            is_sarcasm = True
+                            
                     if is_sarcasm:
-                        print(f"[DEBUG] Sarcasm Detected! Text={top_text_emotion}, Face={top_fer_emotion}. Overriding Text.")
+                        print(f"[DEBUG] Sarcasm/Deception Detected! Text={top_text_emotion} ({text_confidence:.2f}), Face={top_fer_emotion} ({fer_confidence:.2f}). Overriding Text.")
                         text_weight = 0.0
                         fer_weight = 1.0  # Absolute visual trust (forces av_weight to 0.0)
                 
