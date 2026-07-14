@@ -554,25 +554,43 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
                 fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
                 
-                # --- Universal Sarcasm Override (Incongruence Detection) ---
+                # --- Universal Sarcasm & Deception Override (Contextual Consensus) ---
                 if np.sum(text_probs) > 0 and np.sum(fer_probs) > 0:
                     top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
                     top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
+                    top_av_emotion = encoder.classes_[int(np.argmax(probs))]
                     
                     text_confidence = np.max(text_probs)
                     fer_confidence = np.max(fer_probs)
+                    av_confidence = np.max(probs)
                     
                     is_sarcasm = False
-                    # Detect ANY incongruence between Text and Face, provided the models are confident
-                    if top_text_emotion != top_fer_emotion:
-                        # Prevent false positives on blurry frames or mumbled words
-                        if text_confidence > 0.4 and fer_confidence > 0.35:
+                    
+                    # Scenario A: Face and Tone AGREE, but words DISAGREE.
+                    # Example: Says "I am happy", but face is flat and tone is flat. 
+                    if top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
+                        is_sarcasm = True
+                        print(f"[DEBUG] Contextual Sarcasm! Face & Tone agree on {top_fer_emotion}, but Text says {top_text_emotion}.")
+                        
+                    # Scenario B: Text strongly contradicts EVERYTHING else (no consensus)
+                    elif top_text_emotion != top_fer_emotion and top_text_emotion != top_av_emotion:
+                        # If text is the odd one out, and Face/AV have decent confidence, the text is a lie.
+                        if fer_confidence > 0.30 or av_confidence > 0.30:
                             is_sarcasm = True
+                            print(f"[DEBUG] Text Deception! Text says {top_text_emotion}, but Face= {top_fer_emotion} and Tone= {top_av_emotion}.")
                             
                     if is_sarcasm:
-                        print(f"[DEBUG] Sarcasm/Deception Detected! Text={top_text_emotion} ({text_confidence:.2f}), Face={top_fer_emotion} ({fer_confidence:.2f}). Overriding Text.")
+                        # Completely ignore the deceptive words
+                        print(f"[DEBUG] Overriding Text! Trusting physical context (Tone/Face).")
                         text_weight = 0.0
-                        fer_weight = 1.0  # Absolute visual trust (forces av_weight to 0.0)
+                        
+                        # Share the remaining 100% trust between Face and Tone/Motion based on their confidence
+                        total_conf = fer_confidence + av_confidence
+                        if total_conf > 0:
+                            fer_weight = fer_confidence / total_conf
+                        else:
+                            fer_weight = 0.5
+                        # av_weight will automatically become 1.0 - fer_weight later
                 
                 av_weight = 1.0 - text_weight - fer_weight
                 
