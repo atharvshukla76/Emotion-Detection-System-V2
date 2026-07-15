@@ -657,14 +657,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             w_text = 0.15 if conf_text > 0.4 else 0.0
             
             if has_fer:
-                # --- ENVIRONMENTAL SHIELD (Attention Routing) ---
-                # If we detect extreme brightness (dim room) or extreme optical flow (harsh outdoor shadows moving),
-                # the SAMM AV model's optical flow is completely corrupted. We shift 100% of visual power to the ViT model.
-                if motion_mean > 0.3 or vid_mean_brightness < 80:
-                    print(f"[DEBUG] Harsh Environment Detected (brightness: {vid_mean_brightness:.1f}, motion: {motion_mean:.2f}). Trusting ViT over AV model.")
-                    w_vision = 0.75
-                    w_tone = 0.25
-                elif conf_vision < 0.60:
+                if conf_vision < 0.60:
                     # MICRO-EXPRESSION DETECTED: Normal environment, but FER is uncertain because the expression is too subtle.
                     # Shift majority authority to the SAMM-trained AV model which uses optical flow.
                     print(f"[DEBUG] Micro-Expression Detected (FER conf: {conf_vision:.2f}). Shifting power to SAMM AV Model.")
@@ -737,6 +730,17 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     else:
                         w_vision = 0.40
                         w_tone = 0.60
+            
+            # --- ENVIRONMENTAL SHIELD (Attention Routing) ---
+            # Must run AFTER sarcasm logic so it cannot be overwritten by false sarcasm!
+            # If we detect extreme brightness (dim room) or extreme optical flow (harsh outdoor shadows/grain),
+            # the SAMM AV model's optical flow is completely corrupted. We shift 100% of visual power to the ViT model.
+            if has_fer and (motion_mean > 0.3 or vid_mean_brightness < 80):
+                print(f"[DEBUG] Harsh Environment Shield Activated! (brightness: {vid_mean_brightness:.1f}, motion: {motion_mean:.2f}). Overriding sarcasm and trusting ViT.")
+                w_vision = 0.85
+                w_tone = 0.15
+                w_text = 0.0
+                is_sarcasm = False
                         
             # Normalize Weights
             total_w = w_vision + w_tone + w_text
