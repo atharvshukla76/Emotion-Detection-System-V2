@@ -120,9 +120,12 @@ def preprocess_audio(file_path):
             print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting Whisper.")
             # We do NOT zero out the Emotion model! It handles its own silence gracefully.
         else:
-            # Apply Noise Reduction ONLY for Whisper to remove fan/background hums.
-            # prop_decrease=0.75 is safe enough to not mutilate human voices.
-            whisper_signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.75)
+            try:
+                # Apply Noise Reduction ONLY for Whisper to remove fan/background hums.
+                whisper_signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.75)
+            except Exception as e:
+                print(f"[DEBUG] Noise reduction failed ({e}), falling back to raw signal for Whisper.")
+                whisper_signal = signal
 
         # 2. Emotion Model Signal (Strictly matching training: top_db=30, zero-center, NO scaling/NR)
         trimmed, index = librosa.effects.trim(signal, top_db=30)
@@ -626,7 +629,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 clean_signal_16k = clean_signal_16k.astype(np.float32)
                 nlp_thread = threading.Thread(target=run_nlp_async, args=(clean_signal_16k,))
                 nlp_thread.start()
-                nlp_thread.join(timeout=15.0)  # Wait for background transcription to complete (HF CPU is slow)
+                nlp_thread.join(timeout=25.0)  # Wait for background transcription to complete (HF CPU is slow)
             except Exception as e:
                 print(f"[DEBUG] Failed to prepare Whisper audio: {e}")
         
@@ -742,6 +745,18 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 else:
                     w_vision = 0.30
                     w_tone = 0.70
+                    
+            # SCENARIO E: Semantic-Tone Alliance vs Facial Truth
+            elif not align_phys and align_semantic_tone and is_valence_conflict(top_vision, top_text):
+                # Tone and Text agree (e.g. saying the word "Happy" loudly), but the Face is strongly contradictory (e.g. Angry face).
+                # The Tone model might be hallucinating based on the phonemes of the word rather than the actual acoustic emotion.
+                # In this case, if the Face is confident, we must trust the Face over the text-alliance to break the dependency!
+                if conf_vision > 0.4:
+                    print(f"[DEBUG] Contextual Consensus: Semantic Alliance ({top_text}) contradicts Facial Truth ({top_vision}). Trusting Face!")
+                    is_sarcasm = True
+                    w_text = 0.0
+                    w_tone = 0.20
+                    w_vision = 0.80
             
             # Fallback for missing Face
             if not has_fer:
