@@ -123,15 +123,18 @@ def preprocess_audio(file_path):
             print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting background noise.")
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None
             
-        # Removed Artificial Amplitude Scaling:
-        # We no longer force the volume to 0.0095. This prevents audio features from being corrupted
-        # if the user's AV model was not trained with forced amplitude scaling.
-            
-        # Trim silent boundaries from outer edges
+        # Trim silent boundaries from outer edges FIRST
         trimmed, index = librosa.effects.trim(signal, top_db=60)
         start_offset = 0
         if len(trimmed) > 0:
             signal = trimmed
+            
+        # --- DYNAMIC AMPLITUDE SCALING (Moved to AFTER trim) ---
+        # Force the audio volume to match the exact RAVDESS studio average (0.0095 std).
+        # We calculate std_sig on the TRIMMED audio, ensuring we don't divide by near-zero silence and blow out the volume.
+        trimmed_std = np.std(signal)
+        if trimmed_std > 0:
+            signal = signal * (0.0095 / trimmed_std)
             start_offset = index[0]
             
         signal = signal - np.mean(signal)
@@ -240,7 +243,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             cap.release()
             
     if len(raw_frames) < 2:
-        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0, None, None
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0, None, None, 100.0
 
     # First pass: collect all detected face boxes across frames
     face_boxes = []
@@ -272,22 +275,8 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
     # Second pass: crop and stack regions
     processed_frames = []
     
-    # Initialize CLAHE for problem-proof lighting/shadows in Optical Flow
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    
     for frame in raw_frames:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # --- DIM LIGHT BOOST & OUTDOOR SHADOW REMOVAL ---
-        # 1. Dim Light Boost: If overall brightness is very low, safely boost it.
-        mean_brightness = np.mean(gray)
-        if mean_brightness < 80:
-            boost = min(70, int(120 - mean_brightness))
-            gray = cv2.add(gray, boost)
-            
-        # 2. Shadow/Sunlight Equalization: Flatten harsh outdoor lighting so optical flow tracks muscles, not moving shadows.
-        gray = clahe.apply(gray)
-        
         h, w = gray.shape
         
         # Use static geometric crop matching the training pipeline exactly
@@ -303,7 +292,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         processed_frames.append(np.vstack([eyes_res, mouth_res]))
         
     if len(processed_frames) < 2:
-        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0, None, None
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), 0, None, None, 100.0
         
     indices = np.linspace(0, len(processed_frames) - 1, target_frames).astype(int)
     sel_frames = [processed_frames[i] for i in indices]
@@ -331,16 +320,17 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         scale_correction = expected_w_face / stable_box[2]
         video_feat = video_feat * scale_correction
         print(f"[DEBUG] Applied video spatial scaling: {scale_correction:.2f}x")
+    
+    # Calculate overall video brightness to detect dim rooms
+    vid_mean_brightness = np.mean([np.mean(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)) for f in raw_frames]) if raw_frames else 100.0
+
     # Return multiple frames for multi-frame FER averaging (reduces single-frame noise)
     fer_frames = []
-    if len(raw_frames) >= 3:
-        mid = len(raw_frames) // 2
-        fer_frames = [raw_frames[mid - 1], raw_frames[mid], raw_frames[mid + 1]]
-    elif len(raw_frames) > 0:
-        fer_frames = [raw_frames[len(raw_frames) // 2]]
-    middle_frame = fer_frames[0] if fer_frames else None
+    if len(raw_frames) > 0:
+        fer_indices = [0, len(raw_frames)//2, len(raw_frames)-1]
+        fer_frames = [raw_frames[i] for i in fer_indices]
         
-    return video_feat, face_detected_count, fer_frames, stable_box
+    return video_feat, face_detected_count, fer_frames, stable_box, vid_mean_brightness
 
 # =====================================================================
 # 🎯 ENDPOINTS
@@ -455,7 +445,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         print(f"[DEBUG] audio_feat final shape: {audio_feat.shape}")
         
         # Preprocess Video, stack temporal channels, and normalize (synchronized using t_start from audio)
-        video_feat, face_detected_count, fer_frames, stable_box = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
+        video_feat, face_detected_count, fer_frames, stable_box, vid_mean_brightness = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
         
         # Trigger modality dropout if no face is detected or if video is empty
         video_zeros = (face_detected_count == 0) or bool(np.all(video_feat == 0))
@@ -650,14 +640,21 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             w_text = 0.15 if conf_text > 0.4 else 0.0
             
             if has_fer:
-                if conf_vision < 0.60:
-                    # MICRO-EXPRESSION DETECTED: FER is uncertain because the expression is too subtle.
+                # --- ENVIRONMENTAL SHIELD (Attention Routing) ---
+                # If we detect extreme brightness (dim room) or extreme optical flow (harsh outdoor shadows moving),
+                # the SAMM AV model's optical flow is completely corrupted. We shift 100% of visual power to the ViT model.
+                if motion_mean > 0.3 or vid_mean_brightness < 80:
+                    print(f"[DEBUG] Harsh Environment Detected (brightness: {vid_mean_brightness:.1f}, motion: {motion_mean:.2f}). Trusting ViT over AV model.")
+                    w_vision = 0.75
+                    w_tone = 0.25
+                elif conf_vision < 0.60:
+                    # MICRO-EXPRESSION DETECTED: Normal environment, but FER is uncertain because the expression is too subtle.
                     # Shift majority authority to the SAMM-trained AV model which uses optical flow.
                     print(f"[DEBUG] Micro-Expression Detected (FER conf: {conf_vision:.2f}). Shifting power to SAMM AV Model.")
                     w_tone = 0.65
                     w_vision = 0.20
                 else:
-                    # MACRO-EXPRESSION DETECTED: FER is highly confident. Balance equally.
+                    # MACRO-EXPRESSION DETECTED: Normal environment, FER is highly confident. Balance equally.
                     print(f"[DEBUG] Macro-Expression Detected (FER conf: {conf_vision:.2f}). Balancing power.")
                     w_vision = 0.45
                     w_tone = 0.40
