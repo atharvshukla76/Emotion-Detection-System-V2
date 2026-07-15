@@ -341,13 +341,20 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
     # Calculate overall video brightness to detect dim rooms
     vid_mean_brightness = np.mean([np.mean(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)) for f in raw_frames]) if raw_frames else 100.0
 
+    # Calculate mouth motion variance to verify if the person is actually speaking
+    mouth_variance = 0.0
+    if len(processed_frames) >= 2:
+        mouth_crops = [f[img_size[1]//2:, :] for f in processed_frames]
+        diffs = [np.mean(np.abs(mouth_crops[i].astype(int) - mouth_crops[i-1].astype(int))) for i in range(1, len(mouth_crops))]
+        mouth_variance = float(np.mean(diffs))
+
     # Return multiple frames for multi-frame FER averaging (reduces single-frame noise)
     fer_frames = []
     if len(raw_frames) > 0:
         fer_indices = [0, len(raw_frames)//2, len(raw_frames)-1]
         fer_frames = [raw_frames[i] for i in fer_indices]
         
-    return video_feat, face_detected_count, fer_frames, stable_box, vid_mean_brightness
+    return video_feat, face_detected_count, fer_frames, stable_box, vid_mean_brightness, mouth_variance
 
 # =====================================================================
 # 🎯 ENDPOINTS
@@ -462,10 +469,20 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         print(f"[DEBUG] audio_feat final shape: {audio_feat.shape}")
         
         # Preprocess Video, stack temporal channels, and normalize (synchronized using t_start from audio)
-        video_feat, face_detected_count, fer_frames, stable_box, vid_mean_brightness = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
+        video_feat, face_detected_count, fer_frames, stable_box, vid_mean_brightness, mouth_variance = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
         
         # Trigger modality dropout if no face is detected or if video is empty
         video_zeros = (face_detected_count == 0) or bool(np.all(video_feat == 0))
+        
+        # Active Speaker Diarization (Lip-Sync Verification)
+        if not audio_zeros and not video_zeros:
+            if mouth_variance < 1.5:
+                print(f"[DEBUG] Background voice detected (Mouth Variance: {mouth_variance:.2f}). Muting audio!")
+                audio_zeros = True
+                clean_signal = None
+                is_silent = True
+            else:
+                print(f"[DEBUG] Active Speaker Verified (Mouth Variance: {mouth_variance:.2f})")
         
         if not video_zeros and video_feat.shape == (15, 64, 64, 2):
             video_feat = np.transpose(video_feat, (1, 2, 0, 3)) # Shape: (64, 64, 15, 2)
@@ -478,6 +495,8 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             
         video_feat = np.expand_dims(video_feat, axis=0) # Shape: (1, 64, 64, 30)
         
+        # Determine presence of modalities (post-diarization)
+        has_fer = not video_zeros
         # Predict
         motion_mean = float(np.mean(np.abs(video_feat))) if not video_zeros else 0.0
         transcript_text = ""
