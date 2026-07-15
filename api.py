@@ -182,11 +182,18 @@ def preprocess_video(video_path, t_start=0.0):
         
         # Calculate Optical Flow for AV Model
         flow_frames = []
+        mouth_flow_vals = []
         for i in range(len(frames) - 1):
             flow = cv2.calcOpticalFlowFarneback(frames[i], frames[i+1], None, 0.5, 3, 15, 3, 5, 1.2, 0)
             mag, _ = cv2.cartToPolar(flow[..., 0], flow[..., 1])
             flow_frames.append(mag)
+            
+            # Estimate mouth region flow (bottom 1/3 of the 64x64 face crop)
+            mouth_region = mag[42:64, 16:48]
+            mouth_flow_vals.append(np.mean(mouth_region))
+            
         flow_frames.append(np.zeros_like(frames[0], dtype=np.float32))
+        mouth_variance = float(np.mean(mouth_flow_vals)) if mouth_flow_vals else 0.0
         
         vid_features = np.zeros((64, 64, 30), dtype=np.float32)
         for i in range(len(frames)):
@@ -197,10 +204,10 @@ def preprocess_video(video_path, t_start=0.0):
         mean_brightness = float(np.mean(brightness_list)) if brightness_list else 100.0
         
         is_face_visible = face_detected_count > 0
-        return np.expand_dims(vid_features, axis=0), is_face_visible, fer_frames, face_detected_count, motion_mean, mean_brightness
+        return np.expand_dims(vid_features, axis=0), is_face_visible, fer_frames, face_detected_count, motion_mean, mean_brightness, mouth_variance
     except Exception as e:
         print(f"[ERROR] Video processing: {e}")
-        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), False, [], 0, 0.0, 100.0
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32), False, [], 0, 0.0, 100.0, 0.0
 
 # ==========================================
 # 4. ASYNCHRONOUS NLP THREAD
@@ -241,7 +248,12 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         
         # 1. Extract Features
         aud_feat, t_start, clean_sig, aud_silent = preprocess_audio(audio_path)
-        vid_feat, vid_active, fer_frames, face_count, m_mean, v_bright = preprocess_video(video_path, t_start)
+        vid_feat, vid_active, fer_frames, face_count, m_mean, v_bright, mouth_variance = preprocess_video(video_path, t_start)
+        
+        # Lip-Sync Diarization (Active Speaker Detection)
+        if vid_active and not aud_silent and mouth_variance < 0.15:
+            print(f"[DEBUG] Lip-Sync Mismatch (Mouth Flow: {mouth_variance:.3f}). Speaker is off-camera. Muting background audio.")
+            aud_silent = True
         
         # Normalize Data
         if mean is not None and std is not None:
@@ -367,7 +379,10 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
 # ==========================================
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    return "<h1>Moodwave Quadra-Modal API is Online.</h1>"
+    if os.path.exists("moodwave.html"):
+        with open("moodwave.html", "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read(), status_code=200)
+    return "<h1>Moodwave Quadra-Modal API is Online. (GUI not found)</h1>"
 
 @app.get("/health")
 def health_check():
