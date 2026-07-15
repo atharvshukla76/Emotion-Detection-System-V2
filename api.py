@@ -583,68 +583,120 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         # PHILOSOPHY: Physical context (Face + Tone) ALWAYS dominates. Text is only a minor hint.
         print(f"[DEBUG] Base AV Probs: {probs}")
         if audio_zeros:
-            # Vision-Only Mode: FER dominates but AV contributes when there's significant motion
-            transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
-            if np.sum(fer_probs) > 0:
+            # Vision-Only / Silent Mode
+            transcript_text = "[Silence]"
+            has_fer = np.sum(fer_probs) > 0
+            
+            if has_fer:
                 if motion_mean > 0.3:
-                    # User is moving expressively - let AV contribute slightly
+                    # User is silent but moving expressively - let physical motion contribute slightly
                     probs = (probs * 0.25) + (fer_probs * 0.75)
                 else:
-                    # User is still - trust face completely
+                    # Pure silence, static - trust face completely
                     probs = fer_probs
+            # If has_fer is False, 'probs' remains the base AV model (which might be noise due to silence, but it's the only fallback)
+            
         else:
-            # Voice + Meaning Mode: Physical context dominates
-            # Base weights: FER=45%, AV(Tone/Motion)=40%, Text=15% (only if confident)
-            text_conf = np.max(text_probs) if np.sum(text_probs) > 0 else 0
-            text_weight = 0.15 if text_conf > 0.7 else (0.10 if text_conf > 0.4 else 0.0)
-            fer_weight = 0.45 if np.sum(fer_probs) > 0 else 0.0
+            # Quad-Modal Active Mode
+            has_fer = np.sum(fer_probs) > 0
+            has_text = np.sum(text_probs) > 0
+            
+            # 1. Base Confidence Extraction
+            conf_vision = np.max(fer_probs) if has_fer else 0.0
+            conf_tone = np.max(probs)
+            conf_text = np.max(text_probs) if has_text else 0.0
+            
+            # 2. Extract Top Emotions
+            top_vision = encoder.classes_[int(np.argmax(fer_probs))] if has_fer else None
+            top_tone = encoder.classes_[int(np.argmax(probs))]
+            top_text = encoder.classes_[int(np.argmax(text_probs))] if has_text else None
+            
+            # 3. Dynamic Alignment (Consensus) Check
+            align_phys = (top_vision == top_tone) if has_fer else False           # Face matches Tone
+            align_semantic_tone = (top_text == top_tone) if has_text else False   # Text matches Tone
+            align_semantic_face = (top_text == top_vision) if (has_text and has_fer) else False # Text matches Face
+            
+            # 4. Contextual Attention Weighting
+            w_vision = 0.45 if has_fer else 0.0
+            w_tone = 0.40
+            w_text = 0.15 if conf_text > 0.4 else 0.0
             
             is_sarcasm = False
             
-            # --- Universal Sarcasm & Deception Override (Contextual Consensus) ---
-            if np.sum(text_probs) > 0:
-                top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
-                text_confidence = np.max(text_probs)
-                top_av_emotion = encoder.classes_[int(np.argmax(probs))]
-                av_confidence = np.max(probs)
+            # SCENARIO A: Complete Alignment (Normal Prediction)
+            if align_phys and align_semantic_tone:
+                # All modalities agree. Maintain base weights.
+                pass
                 
-                has_fer = np.sum(fer_probs) > 0
-                if has_fer:
-                    top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
-                    fer_confidence = np.max(fer_probs)
-                else:
-                    top_fer_emotion = None
-                    fer_confidence = 0.0
+            # SCENARIO B: Classic Sarcasm / Text Deception
+            elif align_phys and not align_semantic_tone:
+                # Face and Tone agree, but Text contradicts them (e.g., "I'm so happy" said angrily)
+                print(f"[DEBUG] Contextual Consensus: Physical alignment ({top_vision}) contradicts Text ({top_text}). Triggering Sarcasm Override.")
+                is_sarcasm = True
+                w_text = 0.0
+                w_vision = 0.60
+                w_tone = 0.40
                 
-                # Scenario A: Face and Tone AGREE, but words DISAGREE.
-                if has_fer and top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
+            # SCENARIO C: Deadpan Sarcasm
+            elif not align_phys and align_semantic_face:
+                # Face and Text agree (e.g. neutral face, neutral text), but Tone is highly emotional
+                if conf_tone > 0.6:
+                    print(f"[DEBUG] Contextual Consensus: Deadpan/Tone override. Tone ({top_tone}) contradicts Face/Text ({top_vision}).")
                     is_sarcasm = True
-                    print(f"[DEBUG] Contextual Sarcasm! Face & Tone agree on {top_fer_emotion}, but Text says {top_text_emotion}.")
+                    w_text = 0.0
+                    w_tone = 0.60
+                    w_vision = 0.40
                     
-                # Scenario B: Text contradicts ALL physical context
-                elif top_text_emotion != top_av_emotion and (not has_fer or top_text_emotion != top_fer_emotion):
-                    if fer_confidence > 0.25 or av_confidence > 0.25:
-                        is_sarcasm = True
-                        print(f"[DEBUG] Text Deception! Text says {top_text_emotion}, but Face= {top_fer_emotion} and Tone= {top_av_emotion}.")
-                        
-                if is_sarcasm:
-                    # ABSOLUTE override: Text gets ZERO influence. Face and Tone split 100%.
-                    print(f"[DEBUG] Overriding Text! Trusting physical context (Tone/Face).")
-                    text_weight = 0.0
-                    if has_fer:
-                        fer_weight = 0.60  # Face dominates during sarcasm
+            # SCENARIO D: Total Disagreement (Complex Context like "Get the f*** out")
+            elif not align_phys and not align_semantic_tone and not align_semantic_face:
+                # If everything disagrees, the AI must trust the most CONFIDENT physical modality, and ignore Text.
+                print(f"[DEBUG] Contextual Consensus: Total Disagreement. Trusting physical confidence.")
+                w_text = 0.0
+                if conf_vision > conf_tone:
+                    w_vision = 0.70
+                    w_tone = 0.30
+                else:
+                    w_vision = 0.30
+                    w_tone = 0.70
+            
+            # Fallback for missing Face
+            if not has_fer:
+                w_vision = 0.0
+                if w_text > 0.0:
+                    w_tone = 0.75
+                    w_text = 0.25
+                else:
+                    w_tone = 1.0
+            
+            # Fallback for missing Text
+            if not has_text:
+                w_text = 0.0
+                if has_fer:
+                    # Distribute based on confidence
+                    if conf_vision > conf_tone:
+                        w_vision = 0.60
+                        w_tone = 0.40
                     else:
-                        fer_weight = 0.0
-                    # av_weight will automatically become 1.0 - fer_weight later
+                        w_vision = 0.40
+                        w_tone = 0.60
+                        
+            # Normalize Weights
+            total_w = w_vision + w_tone + w_text
+            if total_w > 0:
+                w_vision /= total_w
+                w_tone /= total_w
+                w_text /= total_w
+            else:
+                w_tone = 1.0
+                
+            print(f"[DEBUG] Final Attention Weights -> Vision: {w_vision:.2f}, Tone: {w_tone:.2f}, Text: {w_text:.2f}")
             
-            # If no confident words were spoken, boost Face even more
-            if text_weight == 0.0 and not is_sarcasm:
-                if np.sum(fer_probs) > 0:
-                    fer_weight = 0.70
-                    
-            av_weight = 1.0 - text_weight - fer_weight
-            
-            probs = (probs * av_weight) + (fer_probs * fer_weight) + (text_probs * text_weight)
+            # 5. Apply Fusion
+            probs = (probs * w_tone)
+            if has_fer:
+                probs += (fer_probs * w_vision)
+            if has_text:
+                probs += (text_probs * w_text)
             
         probs = probs / (np.sum(probs) + 1e-6) # Re-normalize
         print(f"[DEBUG] Final Fused Probs: {probs}")
