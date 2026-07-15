@@ -220,8 +220,8 @@ def run_nlp_async(signal_16k):
         text = out.get("text", "").strip()
         
         # Hallucination Guard
-        hals = ["thank you", "subscribe", "thanks for watching", "by subtitlr"]
-        is_hal = any(h == text.lower().strip(" .!,") or text == "" for h in hals)
+        hals = ["thank you", "subscribe", "thanks for watching", "by subtitlr", ""]
+        is_hal = any(h == text.lower().strip(" .!,") for h in hals)
         
         if text and not is_hal:
             print(f"[DEBUG Async] Transcription: {text}")
