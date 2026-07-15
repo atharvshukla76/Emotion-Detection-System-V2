@@ -495,7 +495,21 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     if face_crop.size == 0 or crop_h < 30 or crop_w < 30:
                         continue
                     
-                    face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+                    # --- DIM LIGHT PROTECTOR (Brightness Boost without CLAHE) ---
+                    # Safely boosts brightness if the room is completely dark, without altering local contrast
+                    face_lab = cv2.cvtColor(face_crop, cv2.COLOR_BGR2LAB)
+                    l_chan, a_chan, b_chan = cv2.split(face_lab)
+                    mean_brightness = np.mean(l_chan)
+                    
+                    if mean_brightness < 80:
+                        boost = min(70, int(120 - mean_brightness))
+                        l_chan = cv2.add(l_chan, boost)
+                        face_lab = cv2.merge([l_chan, a_chan, b_chan])
+                        face_crop_processed = cv2.cvtColor(face_lab, cv2.COLOR_LAB2BGR)
+                    else:
+                        face_crop_processed = face_crop
+                    
+                    face_rgb = cv2.cvtColor(face_crop_processed, cv2.COLOR_BGR2RGB)
                     pil_img = Image.fromarray(face_rgb)
                     
                     fer_res = fer_pipe(pil_img)
