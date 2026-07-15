@@ -115,8 +115,8 @@ def preprocess_audio(file_path):
         # 1. VAD & Whisper Signal (Noise-reduced for NLP)
         std_sig = np.std(signal)
         whisper_signal = None
-        # VAD Threshold: 0.005 (Safe for quiet webcams, but still acts as a true VAD)
-        if len(signal) == 0 or std_sig < 0.005:
+        # VAD Threshold: 0.001 (Safe for very quiet webcams, but still acts as a true VAD against pure silence)
+        if len(signal) == 0 or std_sig < 0.001:
             print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting Whisper.")
             # We do NOT zero out the Emotion model! It handles its own silence gracefully.
         else:
@@ -570,7 +570,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             global last_known_text_probs, last_known_transcription
             try:
                 # whisper_pipe accepts {"raw": numpy_array, "sampling_rate": int}
-                whisper_out = whisper_pipe({"raw": signal_arr, "sampling_rate": 22050})
+                whisper_out = whisper_pipe({"raw": signal_arr, "sampling_rate": 16000})
                 transcript_text = whisper_out.get("text", "").strip()
                 
                 # --- WHISPER HALLUCINATION FILTER ---
@@ -600,9 +600,16 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
 
         # If speaking, launch NLP in the background
         if not audio_zeros and clean_signal is not None and whisper_pipe is not None and text_emotion_pipe is not None:
-            nlp_thread = threading.Thread(target=run_nlp_async, args=(clean_signal,))
-            nlp_thread.start()
-            nlp_thread.join(timeout=15.0)  # Wait for background transcription to complete (HF CPU is slow)
+            try:
+                # Whisper natively requires 16000Hz float32 audio. 
+                # Converting it explicitly prevents HuggingFace pipeline silent exceptions.
+                clean_signal_16k = librosa.resample(y=clean_signal, orig_sr=SR, target_sr=16000)
+                clean_signal_16k = clean_signal_16k.astype(np.float32)
+                nlp_thread = threading.Thread(target=run_nlp_async, args=(clean_signal_16k,))
+                nlp_thread.start()
+                nlp_thread.join(timeout=15.0)  # Wait for background transcription to complete (HF CPU is slow)
+            except Exception as e:
+                print(f"[DEBUG] Failed to prepare Whisper audio: {e}")
         
         # Pull from the state buffer instantly without waiting
         import sys
