@@ -121,7 +121,7 @@ def preprocess_audio(file_path):
         # 0.0075 perfectly balances sensitivity: mutes fan/hiss noise but detects normal speech
         if len(signal) == 0 or std_sig < 0.0075:
             print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting background noise.")
-            return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
+            return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None
             
         # Removed Artificial Amplitude Scaling:
         # We no longer force the volume to 0.0095. This prevents audio features from being corrupted
@@ -173,10 +173,10 @@ def preprocess_audio(file_path):
             
         features = np.nan_to_num(features)
         features = np.clip(features, -100.0, 100.0)
-        return np.expand_dims(features, axis=-1), t_start
+        return np.expand_dims(features, axis=-1), t_start, signal
     except Exception as e:
         print(f"Audio extraction error: {e}")
-        return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
+        return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None
 
 # =====================================================================
 # 🎥 VIDEO PREPROCESSING (OPTICAL FLOW)
@@ -430,7 +430,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         )
         
         # Preprocess Audio
-        audio_feat, t_start = preprocess_audio(audio_path)
+        audio_feat, t_start, clean_signal = preprocess_audio(audio_path)
         print(f"[DEBUG] audio_feat shape after preprocess: {audio_feat.shape}, active window start: {t_start:.2f}s")
         print(f"[DEBUG] mean shape: {np.array(mean).shape}, std shape: {np.array(std).shape}")
         
@@ -559,16 +559,17 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         # 2. Text NLP Fusion (Asynchronous State Buffer)
         text_probs = np.zeros_like(probs)
         
-        def run_nlp_async(audio_p):
+        def run_nlp_async(signal_arr):
             global last_known_text_probs, last_known_transcription
             try:
-                whisper_out = whisper_pipe(audio_p)
+                # whisper_pipe accepts {"raw": numpy_array, "sampling_rate": int}
+                whisper_out = whisper_pipe({"raw": signal_arr, "sampling_rate": 22050})
                 transcript_text = whisper_out.get("text", "").strip()
                 
                 # --- WHISPER HALLUCINATION FILTER ---
                 # Whisper tries to transcribe silence/hum as these common phrases
                 lower_text = transcript_text.lower()
-                hallucinations = ["thank you", "subscribe", "thanks for watching", "by subtitlr", "subs by", "amil amara"]
+                hallucinations = ["thank you", "subscribe", "thanks for watching", "by subtitlr", "subs by", "amil amara", "thank you.", "thank you!"]
                 is_hallucination = any(h == lower_text.strip(" .!,") or lower_text == "" for h in hallucinations)
                 
                 if transcript_text and not is_hallucination:
@@ -591,8 +592,8 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 print(f"[DEBUG Async] NLP Processing failed: {e}")
 
         # If speaking, launch NLP in the background so it doesn't freeze the video
-        if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
-            nlp_thread = threading.Thread(target=run_nlp_async, args=(audio_path,))
+        if not audio_zeros and clean_signal is not None and whisper_pipe is not None and text_emotion_pipe is not None:
+            nlp_thread = threading.Thread(target=run_nlp_async, args=(clean_signal,))
             nlp_thread.start()
             nlp_thread.join(timeout=3.0)  # Wait for background transcription to complete
         
