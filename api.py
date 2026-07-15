@@ -598,6 +598,12 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                             fer_weight = 0.0
                         # av_weight will automatically become 1.0 - fer_weight later
                 
+                # If no confident words were spoken, the AV model (which expects speech) is unreliable.
+                # We must trust the visual Face model heavily, just like in pure silence mode.
+                if text_weight == 0.0 and not is_sarcasm:
+                    if np.sum(fer_probs) > 0:
+                        fer_weight = 0.7
+                        
                 av_weight = 1.0 - text_weight - fer_weight
                 
                 probs = (probs * av_weight) + (fer_probs * fer_weight) + (text_probs * text_weight)
