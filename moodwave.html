@@ -854,7 +854,14 @@
     async function startPreview() {
       try {
         if (!mediaStream) {
-          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }, 
+            video: true 
+          });
           webcamPreview.srcObject = mediaStream;
         }
         webcamPlaceholder.style.display = 'none';
