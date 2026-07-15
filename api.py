@@ -674,13 +674,20 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             
             is_sarcasm = False
             
+            # Helper to check if emotions conflict in valence
+            def is_valence_conflict(em1, em2):
+                if em1 is None or em2 is None: return False
+                pos = ["Happy"]
+                neg = ["Angry", "Disgust", "Sad", "Fear"]
+                return (em1 in pos and em2 in neg) or (em1 in neg and em2 in pos)
+            
             # SCENARIO A: Complete Alignment (Normal Prediction)
             if align_phys and align_semantic_tone:
                 # All modalities agree. Maintain base weights.
                 pass
                 
             # SCENARIO B: Classic Sarcasm / Text Deception
-            elif align_phys and not align_semantic_tone:
+            elif align_phys and not align_semantic_tone and is_valence_conflict(top_vision, top_text):
                 # Face and Tone agree, but Text contradicts them (e.g., "I'm so happy" said angrily)
                 print(f"[DEBUG] Contextual Consensus: Physical alignment ({top_vision}) contradicts Text ({top_text}). Triggering Sarcasm Override.")
                 is_sarcasm = True
@@ -689,8 +696,8 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 w_tone = 0.40
                 
             # SCENARIO C: Deadpan Sarcasm
-            elif not align_phys and align_semantic_face:
-                # Face and Text agree (e.g. neutral face, neutral text), but Tone is highly emotional
+            elif not align_phys and align_semantic_face and is_valence_conflict(top_vision, top_tone):
+                # Face and Text agree, but Tone is completely opposite valence (e.g. smiling "Great" but sounding furious)
                 if conf_tone > 0.6:
                     print(f"[DEBUG] Contextual Consensus: Deadpan/Tone override. Tone ({top_tone}) contradicts Face/Text ({top_vision}).")
                     is_sarcasm = True
@@ -698,9 +705,9 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     w_tone = 0.60
                     w_vision = 0.40
                     
-            # SCENARIO D: Total Disagreement (Complex Context like "Get the f*** out")
+            # SCENARIO D: Total Disagreement (Complex Context)
             elif not align_phys and not align_semantic_tone and not align_semantic_face:
-                # If everything disagrees, the AI must trust the most CONFIDENT physical modality, and ignore Text.
+                # If everything disagrees, trust the most CONFIDENT physical modality.
                 print(f"[DEBUG] Contextual Consensus: Total Disagreement. Trusting physical confidence.")
                 w_text = 0.0
                 if conf_vision > conf_tone:
