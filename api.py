@@ -535,18 +535,21 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             transcript_text = _buf.last_known_transcription
         
         # 3. Ultimate Quad-Modal Fusion Weights
+        # PHILOSOPHY: Physical context (Face + Tone) ALWAYS dominates. Text is only a minor hint.
         print(f"[DEBUG] Base AV Probs: {probs}")
         if audio_zeros:
-            # Vision-Only Mode: Rely heavily on Static FER (70%), since RAVDESS AV (30%) gets confused by silent lack-of-movement
+            # Vision-Only Mode: Rely heavily on Static FER (80%), AV gets 20%
             transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
-            # Only fuse if FER was successfully generated
             if np.sum(fer_probs) > 0:
-                probs = (probs * 0.3) + (fer_probs * 0.7)
+                probs = (probs * 0.2) + (fer_probs * 0.8)
         else:
-            # Voice + Meaning Mode: Combine AV, FER, and Text
+            # Voice + Meaning Mode: Physical context dominates
+            # Base weights: FER=45%, AV(Tone/Motion)=40%, Text=15% (only if confident)
             text_conf = np.max(text_probs) if np.sum(text_probs) > 0 else 0
-            text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
-            fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
+            text_weight = 0.15 if text_conf > 0.7 else (0.10 if text_conf > 0.4 else 0.0)
+            fer_weight = 0.45 if np.sum(fer_probs) > 0 else 0.0
+            
+            is_sarcasm = False
             
             # --- Universal Sarcasm & Deception Override (Contextual Consensus) ---
             if np.sum(text_probs) > 0:
@@ -563,38 +566,31 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     top_fer_emotion = None
                     fer_confidence = 0.0
                 
-                is_sarcasm = False
-                
                 # Scenario A: Face and Tone AGREE, but words DISAGREE.
                 if has_fer and top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
                     is_sarcasm = True
                     print(f"[DEBUG] Contextual Sarcasm! Face & Tone agree on {top_fer_emotion}, but Text says {top_text_emotion}.")
                     
-                # Scenario B: Text strongly contradicts the physical context (Tone or Tone+Face)
+                # Scenario B: Text contradicts ALL physical context
                 elif top_text_emotion != top_av_emotion and (not has_fer or top_text_emotion != top_fer_emotion):
-                    # If text is the odd one out, and Face/AV have decent confidence, the text is a lie.
-                    if fer_confidence > 0.30 or av_confidence > 0.30:
+                    if fer_confidence > 0.25 or av_confidence > 0.25:
                         is_sarcasm = True
                         print(f"[DEBUG] Text Deception! Text says {top_text_emotion}, but Face= {top_fer_emotion} and Tone= {top_av_emotion}.")
                         
                 if is_sarcasm:
-                    # Completely ignore the deceptive words
+                    # ABSOLUTE override: Text gets ZERO influence. Face and Tone split 100%.
                     print(f"[DEBUG] Overriding Text! Trusting physical context (Tone/Face).")
                     text_weight = 0.0
-                    
-                    # Share the remaining 100% trust between Face and Tone/Motion based on their confidence
-                    total_conf = fer_confidence + av_confidence
-                    if total_conf > 0:
-                        fer_weight = fer_confidence / total_conf
+                    if has_fer:
+                        fer_weight = 0.60  # Face dominates during sarcasm
                     else:
                         fer_weight = 0.0
                     # av_weight will automatically become 1.0 - fer_weight later
             
-            # If no confident words were spoken, the AV model (which expects speech) is unreliable.
-            # We must trust the visual Face model heavily, just like in pure silence mode.
+            # If no confident words were spoken, boost Face even more
             if text_weight == 0.0 and not is_sarcasm:
                 if np.sum(fer_probs) > 0:
-                    fer_weight = 0.7
+                    fer_weight = 0.70
                     
             av_weight = 1.0 - text_weight - fer_weight
             
