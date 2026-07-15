@@ -170,10 +170,12 @@ def preprocess_audio(file_path):
             
         features = np.nan_to_num(features)
         features = np.clip(features, -100.0, 100.0)
-        return np.expand_dims(features, axis=-1), t_start, whisper_signal
+        
+        is_silent = bool(len(signal) == 0 or std_sig < 0.005)
+        return np.expand_dims(features, axis=-1), t_start, whisper_signal, is_silent
     except Exception as e:
         print(f"Audio extraction error: {e}")
-        return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None
+        return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None, True
 
 # =====================================================================
 # 🎥 VIDEO PREPROCESSING (OPTICAL FLOW)
@@ -435,13 +437,13 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         )
         
         # Preprocess Audio
-        audio_feat, t_start, clean_signal = preprocess_audio(audio_path)
+        audio_feat, t_start, clean_signal, is_silent = preprocess_audio(audio_path)
         print(f"[DEBUG] audio_feat shape after preprocess: {audio_feat.shape}, active window start: {t_start:.2f}s")
         print(f"[DEBUG] mean shape: {np.array(mean).shape}, std shape: {np.array(std).shape}")
         
-        # Check if the audio features are empty/silent (all zeros)
-        audio_zeros = bool(np.all(audio_feat == 0))
-        if not audio_zeros:
+        # We define "audio_zeros" logically based on VAD silence, so the fusion engine can trigger Vision-Only mode.
+        audio_zeros = is_silent
+        if not bool(np.all(audio_feat == 0)):
             # Normalize — ensure shapes are compatible
             mean_arr = np.array(mean, dtype=np.float32)
             std_arr = np.array(std, dtype=np.float32)
