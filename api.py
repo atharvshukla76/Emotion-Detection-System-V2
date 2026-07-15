@@ -598,11 +598,11 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             except Exception as e:
                 print(f"[DEBUG Async] NLP Processing failed: {e}")
 
-        # If speaking, launch NLP in the background so it doesn't freeze the video
+        # If speaking, launch NLP in the background
         if not audio_zeros and clean_signal is not None and whisper_pipe is not None and text_emotion_pipe is not None:
             nlp_thread = threading.Thread(target=run_nlp_async, args=(clean_signal,))
             nlp_thread.start()
-            nlp_thread.join(timeout=3.0)  # Wait for background transcription to complete
+            nlp_thread.join(timeout=15.0)  # Wait for background transcription to complete (HF CPU is slow)
         
         # Pull from the state buffer instantly without waiting
         import sys
