@@ -242,7 +242,7 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
     face_boxes = []
     for frame in raw_frames:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=7, minSize=(60, 60))
         if len(faces) > 0:
             # Select the largest face detected
             x_f, y_f, w_f, h_f = max(faces, key=lambda f: f[2] * f[3])
@@ -312,11 +312,16 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
         scale_correction = expected_w_face / stable_box[2]
         video_feat = video_feat * scale_correction
         print(f"[DEBUG] Applied video spatial scaling: {scale_correction:.2f}x")
-    middle_frame = None
-    if len(raw_frames) > 0:
-        middle_frame = raw_frames[len(raw_frames)//2]
+    # Return multiple frames for multi-frame FER averaging (reduces single-frame noise)
+    fer_frames = []
+    if len(raw_frames) >= 3:
+        mid = len(raw_frames) // 2
+        fer_frames = [raw_frames[mid - 1], raw_frames[mid], raw_frames[mid + 1]]
+    elif len(raw_frames) > 0:
+        fer_frames = [raw_frames[len(raw_frames) // 2]]
+    middle_frame = fer_frames[0] if fer_frames else None
         
-    return video_feat, face_detected_count, middle_frame, stable_box
+    return video_feat, face_detected_count, fer_frames, stable_box
 
 # =====================================================================
 # 🎯 ENDPOINTS
@@ -431,7 +436,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         print(f"[DEBUG] audio_feat final shape: {audio_feat.shape}")
         
         # Preprocess Video, stack temporal channels, and normalize (synchronized using t_start from audio)
-        video_feat, face_detected_count, middle_frame, stable_box = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
+        video_feat, face_detected_count, fer_frames, stable_box = preprocess_video(video_path, t_start, img_size=(64, 64)) # Shape: (15, 64, 64, 2)
         
         # Trigger modality dropout if no face is detected or if video is empty
         video_zeros = (face_detected_count == 0) or bool(np.all(video_feat == 0))
@@ -464,31 +469,39 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         
         # 1. Static Facial Expression Recognition (FER)
         fer_probs = np.zeros_like(probs)
-        if fer_pipe is not None and middle_frame is not None and stable_box is not None:
+        # fer_frames is a list of 1-3 frames for multi-frame averaging
+        if fer_pipe is not None and fer_frames and len(fer_frames) > 0 and stable_box is not None:
             try:
-                # Crop face from middle frame with safe boundary clamping
                 x_b, y_b, w_b, h_b = stable_box
-                h_m, w_m, _ = middle_frame.shape
+                label_map_fer = {
+                    "happy": "Happy", "sad": "Sad", "angry": "Angry",
+                    "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
+                }
                 
-                x1, y1 = max(0, x_b), max(0, y_b)
-                x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
-                
-                face_crop = middle_frame[y1:y2, x1:x2]
-                if face_crop.size > 0:
-                    face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-                    pil_img = Image.fromarray(face_rgb)
+                # Average FER predictions across multiple frames for stability
+                frame_predictions = []
+                for frame in fer_frames:
+                    h_m, w_m, _ = frame.shape
+                    x1, y1 = max(0, x_b), max(0, y_b)
+                    x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
                     
-                    fer_res = fer_pipe(pil_img) # [{'label': 'happy', 'score': 0.9}, ...]
-                    label_map_fer = {
-                        "happy": "Happy", "sad": "Sad", "angry": "Angry",
-                        "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
-                    }
-                    for res in fer_res:
-                        target_label = label_map_fer.get(res['label'])
-                        if target_label in encoder.classes_:
-                            idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
-                            fer_probs[idx_class] += res['score']
-                    print(f"[DEBUG] FER Probs: {fer_probs}")
+                    face_crop = frame[y1:y2, x1:x2]
+                    if face_crop.size > 0:
+                        face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+                        pil_img = Image.fromarray(face_rgb)
+                        
+                        fer_res = fer_pipe(pil_img)
+                        single_probs = np.zeros_like(probs)
+                        for res in fer_res:
+                            target_label = label_map_fer.get(res['label'])
+                            if target_label in encoder.classes_:
+                                idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
+                                single_probs[idx_class] += res['score']
+                        frame_predictions.append(single_probs)
+                
+                if frame_predictions:
+                    fer_probs = np.mean(frame_predictions, axis=0)
+                print(f"[DEBUG] FER Probs (avg of {len(frame_predictions)} frames): {fer_probs}")
             except Exception as e:
                 print(f"[DEBUG] FER Processing failed: {e}")
         
@@ -538,11 +551,15 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         # PHILOSOPHY: Physical context (Face + Tone) ALWAYS dominates. Text is only a minor hint.
         print(f"[DEBUG] Base AV Probs: {probs}")
         if audio_zeros:
-            # Vision-Only Mode: FER gets 100% because the RAVDESS AV model was trained on
-            # speaking actors and produces garbage/random noise during silence.
+            # Vision-Only Mode: FER dominates but AV contributes when there's significant motion
             transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
             if np.sum(fer_probs) > 0:
-                probs = fer_probs  # 100% trust in the face - AV is useless during silence
+                if motion_mean > 0.3:
+                    # User is moving expressively - let AV contribute slightly
+                    probs = (probs * 0.25) + (fer_probs * 0.75)
+                else:
+                    # User is still - trust face completely
+                    probs = fer_probs
         else:
             # Voice + Meaning Mode: Physical context dominates
             # Base weights: FER=45%, AV(Tone/Motion)=40%, Text=15% (only if confident)
