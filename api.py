@@ -260,13 +260,12 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             avg_w = int(np.median([f[2] for f in face_boxes]))
             avg_h = int(np.median([f[3] for f in face_boxes]))
             
-            # Expand the bounding box to capture mouth corners and lower lip/chin
-            new_x = max(0, int(avg_x - avg_w * 0.1))
-            new_y = max(0, int(avg_y - avg_h * 0.1))
-            new_w = int(avg_w * 1.2)
-            new_h = int(avg_h * 1.3)
+            # The Haar Cascade perfectly maps cheek-to-cheek (x, w) and eyebrows (y).
+            # We ONLY expand the bottom edge (height) downwards by 25% to capture the lower lip and chin,
+            # strictly avoiding the hair, ears, and neck.
+            new_h = int(avg_h * 1.25)
             
-            stable_box = (new_x, new_y, new_w, new_h)
+            stable_box = (avg_x, avg_y, avg_w, new_h)
     else:
         stable_box = None
         face_detected_count = 0
