@@ -259,7 +259,14 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             avg_y = int(np.median([f[1] for f in face_boxes]))
             avg_w = int(np.median([f[2] for f in face_boxes]))
             avg_h = int(np.median([f[3] for f in face_boxes]))
-            stable_box = (avg_x, avg_y, avg_w, avg_h)
+            
+            # Expand the bounding box to capture mouth corners and lower lip/chin
+            new_x = max(0, int(avg_x - avg_w * 0.1))
+            new_y = max(0, int(avg_y - avg_h * 0.1))
+            new_w = int(avg_w * 1.2)
+            new_h = int(avg_h * 1.3)
+            
+            stable_box = (new_x, new_y, new_w, new_h)
     else:
         stable_box = None
         face_detected_count = 0
