@@ -69,7 +69,17 @@ last_known_transcription = ""
 def load_resources():
     global model, encoder, mean, std, vid_mean, vid_std, whisper_pipe, text_emotion_pipe
     try:
-        model_path = os.path.join(MODEL_DIR, "multimodal_emotion_model.keras")
+        # Check for the fine-tuned (CREMA-D + RAVDESS + SAMM) model first
+        ft_model_path = "best_multimodal_model_ft.keras"
+        base_model_path = os.path.join(MODEL_DIR, "multimodal_emotion_model.keras")
+        
+        if os.path.exists(ft_model_path):
+            model_path = ft_model_path
+            print(f"[STARTUP] Found fine-tuned Multi-Dataset model: {model_path}")
+        else:
+            model_path = base_model_path
+            print(f"[STARTUP] Using base Multi-Dataset model: {model_path}")
+            
         encoder_path = os.path.join(MODEL_DIR, "encoder.pkl")
         norm_path = os.path.join(MODEL_DIR, "norm.pkl")
         
