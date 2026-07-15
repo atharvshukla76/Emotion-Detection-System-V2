@@ -268,12 +268,44 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
     # Second pass: crop and stack regions
     processed_frames = []
     
+    def align_to_ravdess(frame_gray, face_box):
+        x, y, w_f, h_f = face_box
+        cx = x + w_f / 2
+        cy = y + h_f / 2
+        
+        target_w = int(w_f / 0.273)
+        target_h = int(target_w * (720 / 1280))
+        
+        top_left_x = int(cx - target_w * 0.5)
+        top_left_y = int(cy - target_h * 0.45)
+        
+        aligned = np.zeros((target_h, target_w), dtype=np.uint8)
+        
+        src_y1 = max(0, top_left_y)
+        src_y2 = min(frame_gray.shape[0], top_left_y + target_h)
+        src_x1 = max(0, top_left_x)
+        src_x2 = min(frame_gray.shape[1], top_left_x + target_w)
+        
+        dst_y1 = max(0, -top_left_y)
+        dst_y2 = dst_y1 + (src_y2 - src_y1)
+        dst_x1 = max(0, -top_left_x)
+        dst_x2 = dst_x1 + (src_x2 - src_x1)
+        
+        if src_y2 > src_y1 and src_x2 > src_x1:
+            aligned[dst_y1:dst_y2, dst_x1:dst_x2] = frame_gray[src_y1:src_y2, src_x1:src_x2]
+        return aligned
+    
     for frame in raw_frames:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        if stable_box is not None:
+            gray = align_to_ravdess(gray, stable_box)
+            
         h, w = gray.shape
         
         # Use static geometric crop matching the training pipeline exactly
-        # The model relies on the background motion (head bobbing relative to background).
+        # By aligning the frame first, these static coordinates perfectly slice the eyes and mouth
+        # exactly like the laboratory RAVDESS dataset, regardless of webcam distance/framing!
         eyes = gray[int(h*0.15):int(h*0.45), int(w*0.2):int(w*0.8)]
         mouth = gray[int(h*0.65):int(h*0.9), int(w*0.25):int(w*0.75)]
             
@@ -302,17 +334,6 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
             flow_seq.append(np.zeros((img_size[0], img_size[1], 2), dtype=np.float32))
             
     video_feat = np.array(flow_seq, dtype=np.float32)
-    
-    # DYNAMIC SPATIAL SCALING
-    # In RAVDESS, the actor's face occupied exactly 27.3% of the video width.
-    # If the user sits closer/further, their optical flow displacement vectors will be artificially larger/smaller.
-    # We scale the vectors down/up to match the exact 27.3% reference frame!
-    if stable_box is not None and len(raw_frames) > 0:
-        h_frame, w_frame, _ = raw_frames[0].shape
-        expected_w_face = w_frame * 0.273
-        scale_correction = expected_w_face / stable_box[2]
-        video_feat = video_feat * scale_correction
-        print(f"[DEBUG] Applied video spatial scaling: {scale_correction:.2f}x")
     
     # Calculate overall video brightness to detect dim rooms
     vid_mean_brightness = np.mean([np.mean(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)) for f in raw_frames]) if raw_frames else 100.0
