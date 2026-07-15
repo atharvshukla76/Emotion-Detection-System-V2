@@ -781,12 +781,25 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             
             # --- ENVIRONMENTAL SHIELD (Attention Routing) ---
             # Must run AFTER sarcasm logic so it cannot be overwritten by false sarcasm!
-            # If we detect extreme brightness (dim room) or extreme optical flow (harsh outdoor shadows/grain),
-            # the SAMM AV model's optical flow is completely corrupted. We shift 100% of visual power to the ViT model.
-            if has_fer and (motion_mean > 0.3 or vid_mean_brightness < 80):
-                print(f"[DEBUG] Harsh Environment Shield Activated! (brightness: {vid_mean_brightness:.1f}, motion: {motion_mean:.2f}). Overriding sarcasm and trusting ViT.")
+            
+            # Shield A: Camera Shake (Optical Flow Corruption)
+            # If there is extreme camera movement, the SAMM AV model's optical flow is completely corrupted.
+            # We shift visual power to the static ViT model, which doesn't care about movement.
+            if has_fer and motion_mean > 0.3:
+                print(f"[DEBUG] Camera Shake Shield Activated! (motion: {motion_mean:.2f}). Overriding sarcasm and trusting ViT.")
                 w_vision = 0.85
                 w_tone = 0.15
+                w_text = 0.0
+                is_sarcasm = False
+                
+            # Shield B: Dim Lighting (Static ViT Corruption)
+            # If the room is very dark, static ViT models hallucinate Fear or Sadness because dark pixels look like deep eye shadows.
+            # However, Optical Flow (AV model) is immune to static lighting because it only tracks pixel differences!
+            # We shift power AWAY from the ViT model and trust the AV model.
+            elif has_fer and vid_mean_brightness < 80:
+                print(f"[DEBUG] Dim Lighting Shield Activated! (brightness: {vid_mean_brightness:.1f}). ViT will hallucinate Fear. Trusting AV Model.")
+                w_vision = 0.15
+                w_tone = 0.85
                 w_text = 0.0
                 is_sarcasm = False
                         
