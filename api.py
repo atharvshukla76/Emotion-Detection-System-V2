@@ -545,6 +545,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             print(f"[DEBUG] Base AV Probs: {probs}")
             if audio_zeros:
                 # Vision-Only Mode: Rely heavily on Static FER (70%), since RAVDESS AV (30%) gets confused by silent lack-of-movement
+                transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
                 # Only fuse if FER was successfully generated
                 if np.sum(fer_probs) > 0:
                     probs = (probs * 0.3) + (fer_probs * 0.7)
