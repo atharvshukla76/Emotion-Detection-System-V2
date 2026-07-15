@@ -112,29 +112,22 @@ def preprocess_audio(file_path):
     try:
         signal, _ = librosa.load(file_path, sr=SR)
         
-        # Apply Spectral Gating Noise Reduction to match studio training conditions
-        if len(signal) > 0:
-            signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.85)
-            
+        # 1. VAD & Whisper Signal (Noise-reduced for NLP)
         std_sig = np.std(signal)
-        # --- REFINED VAD THRESHOLD ---
-        # 0.0075 perfectly balances sensitivity: mutes fan/hiss noise but detects normal speech
+        whisper_signal = None
         if len(signal) == 0 or std_sig < 0.0075:
             print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting background noise.")
+            # If silent, emotion model gets zeros, whisper gets None
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None
-            
-        # Trim silent boundaries from outer edges FIRST
-        trimmed, index = librosa.effects.trim(signal, top_db=60)
+        else:
+            # Apply Noise Reduction ONLY for Whisper to prevent hallucinations
+            whisper_signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.85)
+
+        # 2. Emotion Model Signal (Strictly matching training: top_db=30, zero-center, NO scaling/NR)
+        trimmed, index = librosa.effects.trim(signal, top_db=30)
         start_offset = 0
         if len(trimmed) > 0:
             signal = trimmed
-            
-        # --- DYNAMIC AMPLITUDE SCALING (Moved to AFTER trim) ---
-        # Force the audio volume to match the exact RAVDESS studio average (0.0095 std).
-        # We calculate std_sig on the TRIMMED audio, ensuring we don't divide by near-zero silence and blow out the volume.
-        trimmed_std = np.std(signal)
-        if trimmed_std > 0:
-            signal = signal * (0.0095 / trimmed_std)
             start_offset = index[0]
             
         signal = signal - np.mean(signal)
@@ -176,7 +169,7 @@ def preprocess_audio(file_path):
             
         features = np.nan_to_num(features)
         features = np.clip(features, -100.0, 100.0)
-        return np.expand_dims(features, axis=-1), t_start, signal
+        return np.expand_dims(features, axis=-1), t_start, whisper_signal
     except Exception as e:
         print(f"Audio extraction error: {e}")
         return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0, None
