@@ -96,7 +96,7 @@ def load_resources():
         text_emotion_pipe = pipeline("text-classification", model="j-hartmann/emotion-english-distilroberta-base", top_k=None)
         
         print("Loading FER Image model...")
-        fer_pipe = pipeline("image-classification", model="dima806/facial_emotions_image_detection")
+        fer_pipe = pipeline("image-classification", model="trpakov/vit-face-expression", top_k=None)
         print("All models loaded successfully!")
         
     except Exception as e:
@@ -475,7 +475,10 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 x_b, y_b, w_b, h_b = stable_box
                 label_map_fer = {
                     "happy": "Happy", "sad": "Sad", "angry": "Angry",
-                    "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
+                    "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral",
+                    # trpakov/vit-face-expression uses capitalized labels
+                    "Happy": "Happy", "Sad": "Sad", "Angry": "Angry",
+                    "Fear": "Fear", "Disgust": "Disgust", "Neutral": "Neutral", "Surprise": "Neutral"
                 }
                 
                 # Average FER predictions across multiple frames for stability
@@ -486,18 +489,42 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
                     
                     face_crop = frame[y1:y2, x1:x2]
-                    if face_crop.size > 0:
-                        face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-                        pil_img = Image.fromarray(face_rgb)
-                        
-                        fer_res = fer_pipe(pil_img)
-                        single_probs = np.zeros_like(probs)
-                        for res in fer_res:
-                            target_label = label_map_fer.get(res['label'])
-                            if target_label in encoder.classes_:
-                                idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
-                                single_probs[idx_class] += res['score']
-                        frame_predictions.append(single_probs)
+                    crop_h, crop_w = face_crop.shape[:2]
+                    
+                    # Reject tiny or degenerate crops (bad bounding box)
+                    if face_crop.size == 0 or crop_h < 30 or crop_w < 30:
+                        continue
+                    
+                    # --- LIGHTING NORMALIZATION (CLAHE) ---
+                    # Fixes shadows, dim lighting, and uneven illumination
+                    face_lab = cv2.cvtColor(face_crop, cv2.COLOR_BGR2LAB)
+                    l_chan, a_chan, b_chan = cv2.split(face_lab)
+                    
+                    # Boost brightness if the face is too dark
+                    mean_brightness = np.mean(l_chan)
+                    if mean_brightness < 100:
+                        # Lift the brightness channel so shadows don't look like muscle tension
+                        boost = min(60, int(120 - mean_brightness))
+                        l_chan = cv2.add(l_chan, boost)
+                    
+                    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                    l_chan = clahe.apply(l_chan)
+                    
+                    face_lab = cv2.merge([l_chan, a_chan, b_chan])
+                    face_corrected = cv2.cvtColor(face_lab, cv2.COLOR_LAB2BGR)
+                    
+                    face_rgb = cv2.cvtColor(face_corrected, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(face_rgb)
+                    
+                    fer_res = fer_pipe(pil_img)
+                    single_probs = np.zeros_like(probs)
+                    for res in fer_res:
+                        target_label = label_map_fer.get(res['label'])
+                        if target_label in encoder.classes_:
+                            idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
+                            single_probs[idx_class] += res['score']
+                    frame_predictions.append(single_probs)
                 
                 if frame_predictions:
                     fer_probs = np.mean(frame_predictions, axis=0)
