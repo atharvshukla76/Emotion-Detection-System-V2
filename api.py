@@ -451,169 +451,161 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         motion_mean = float(np.mean(np.abs(video_feat))) if not video_zeros else 0.0
         transcript_text = ""
         
-        # Override for completely silent and frozen states (baseline state)
-        # Human breathing/balancing creates around 0.15-0.25 motion mean even when trying to be still.
-        if audio_zeros and motion_mean < 0.25:
-            idx = int(np.where(encoder.classes_ == "Neutral")[0][0])
-            probs = np.zeros(len(encoder.classes_), dtype=float)
-            probs[idx] = 1.0
-            label = "Neutral"
-            print(f"[DEBUG] Triggered NEUTRAL override. Mean: {motion_mean:.3f}")
-        else:
-            # --- VISION-ONLY MAGNIFICATION ---
-            # If the user is silent, their facial optical flow is much smaller than the speaking actors in the training data.
-            # We magnify the subtle silent expressions so the network can categorize them correctly.
-            if audio_zeros:
-                video_feat = video_feat * 2.5
-                
-            probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
+        # Override removed: We now rely on dynamic fusion so smiles don't get forced to Neutral.
+        # --- VISION-ONLY MAGNIFICATION ---
+        # If the user is silent, their facial optical flow is much smaller than the speaking actors in the training data.
+        # We magnify the subtle silent expressions so the network can categorize them correctly.
+        if audio_zeros:
+            video_feat = video_feat * 2.5
             
-            # --- QUAD-MODAL FUSION (Static FER + Text NLP + Dynamic RAVDESS AV) ---
-            
-            # 1. Static Facial Expression Recognition (FER)
-            fer_probs = np.zeros_like(probs)
-            if fer_pipe is not None and middle_frame is not None and stable_box is not None:
-                try:
-                    # Crop face from middle frame with safe boundary clamping
-                    x_b, y_b, w_b, h_b = stable_box
-                    h_m, w_m, _ = middle_frame.shape
-                    
-                    x1, y1 = max(0, x_b), max(0, y_b)
-                    x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
-                    
-                    face_crop = middle_frame[y1:y2, x1:x2]
-                    if face_crop.size > 0:
-                        face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-                        pil_img = Image.fromarray(face_rgb)
-                        
-                        fer_res = fer_pipe(pil_img) # [{'label': 'happy', 'score': 0.9}, ...]
-                        label_map_fer = {
-                            "happy": "Happy", "sad": "Sad", "angry": "Angry",
-                            "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
-                        }
-                        for res in fer_res:
-                            target_label = label_map_fer.get(res['label'])
-                            if target_label in encoder.classes_:
-                                idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
-                                fer_probs[idx_class] += res['score']
-                        print(f"[DEBUG] FER Probs: {fer_probs}")
-                except Exception as e:
-                    print(f"[DEBUG] FER Processing failed: {e}")
-            
-            # 2. Text NLP Fusion (Asynchronous State Buffer)
-            text_probs = np.zeros_like(probs)
-            
-            def run_nlp_async(audio_p):
-                global last_known_text_probs, last_known_transcription
-                try:
-                    whisper_out = whisper_pipe(audio_p)
-                    transcript_text = whisper_out.get("text", "").strip()
-                    if transcript_text:
-                        print(f"[DEBUG Async] Transcription: {transcript_text}")
-                        text_emotions = text_emotion_pipe(transcript_text)[0]
-                        
-                        temp_probs = np.zeros_like(probs)
-                        label_map_text = {
-                            "joy": "Happy", "sadness": "Sad", "anger": "Angry",
-                            "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
-                        }
-                        for res in text_emotions:
-                            t_label = label_map_text.get(res['label'])
-                            if t_label in encoder.classes_:
-                                idx_c = int(np.where(encoder.classes_ == t_label)[0][0])
-                                temp_probs[idx_c] += res['score']
-                        last_known_text_probs = temp_probs
-                        last_known_transcription = transcript_text
-                except Exception as e:
-                    print(f"[DEBUG Async] NLP Processing failed: {e}")
-
-            # If speaking, launch NLP in the background so it doesn't freeze the video
-            if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
-                nlp_thread = threading.Thread(target=run_nlp_async, args=(audio_path,))
-                nlp_thread.start()
-                nlp_thread.join(timeout=3.0)  # Wait for background transcription to complete
-            
-            # Pull from the state buffer instantly without waiting
-            import sys
-            _buf = sys.modules[__name__]
-            if getattr(_buf, 'last_known_text_probs', None) is not None:
-                text_probs = _buf.last_known_text_probs
-                print(f"[DEBUG] Using Buffered Text Probs: {text_probs}")
-            if getattr(_buf, 'last_known_transcription', None) is not None and _buf.last_known_transcription != "":
-                transcript_text = _buf.last_known_transcription
-            
-            # 3. Ultimate Quad-Modal Fusion Weights
-            print(f"[DEBUG] Base AV Probs: {probs}")
-            if audio_zeros:
-                # Vision-Only Mode: Rely heavily on Static FER (70%), since RAVDESS AV (30%) gets confused by silent lack-of-movement
-                transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
-                # Only fuse if FER was successfully generated
-                if np.sum(fer_probs) > 0:
-                    probs = (probs * 0.3) + (fer_probs * 0.7)
-            else:
-                # Voice + Meaning Mode: Combine AV, FER, and Text
-                text_conf = np.max(text_probs) if np.sum(text_probs) > 0 else 0
-                text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
-                fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
-                
-                # --- Universal Sarcasm & Deception Override (Contextual Consensus) ---
-                if np.sum(text_probs) > 0:
-                    top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
-                    text_confidence = np.max(text_probs)
-                    top_av_emotion = encoder.classes_[int(np.argmax(probs))]
-                    av_confidence = np.max(probs)
-                    
-                    has_fer = np.sum(fer_probs) > 0
-                    if has_fer:
-                        top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
-                        fer_confidence = np.max(fer_probs)
-                    else:
-                        top_fer_emotion = None
-                        fer_confidence = 0.0
-                    
-                    is_sarcasm = False
-                    
-                    # Scenario A: Face and Tone AGREE, but words DISAGREE.
-                    if has_fer and top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
-                        is_sarcasm = True
-                        print(f"[DEBUG] Contextual Sarcasm! Face & Tone agree on {top_fer_emotion}, but Text says {top_text_emotion}.")
-                        
-                    # Scenario B: Text strongly contradicts the physical context (Tone or Tone+Face)
-                    elif top_text_emotion != top_av_emotion and (not has_fer or top_text_emotion != top_fer_emotion):
-                        # If text is the odd one out, and Face/AV have decent confidence, the text is a lie.
-                        if fer_confidence > 0.30 or av_confidence > 0.30:
-                            is_sarcasm = True
-                            print(f"[DEBUG] Text Deception! Text says {top_text_emotion}, but Face= {top_fer_emotion} and Tone= {top_av_emotion}.")
-                            
-                    if is_sarcasm:
-                        # Completely ignore the deceptive words
-                        print(f"[DEBUG] Overriding Text! Trusting physical context (Tone/Face).")
-                        text_weight = 0.0
-                        
-                        # Share the remaining 100% trust between Face and Tone/Motion based on their confidence
-                        total_conf = fer_confidence + av_confidence
-                        if total_conf > 0:
-                            fer_weight = fer_confidence / total_conf
-                        else:
-                            fer_weight = 0.0
-                        # av_weight will automatically become 1.0 - fer_weight later
-                
-                # If no confident words were spoken, the AV model (which expects speech) is unreliable.
-                # We must trust the visual Face model heavily, just like in pure silence mode.
-                if text_weight == 0.0 and not is_sarcasm:
-                    if np.sum(fer_probs) > 0:
-                        fer_weight = 0.7
-                        
-                av_weight = 1.0 - text_weight - fer_weight
-                
-                probs = (probs * av_weight) + (fer_probs * fer_weight) + (text_probs * text_weight)
-                
-            probs = probs / (np.sum(probs) + 1e-6) # Re-normalize
-            print(f"[DEBUG] Final Fused Probs: {probs}")
-            
-            idx = int(np.argmax(probs))
-            label = encoder.inverse_transform([idx])[0]
+        probs = model.predict({"audio_input": audio_feat, "video_input": video_feat}, verbose=0)[0]
         
+        # --- QUAD-MODAL FUSION (Static FER + Text NLP + Dynamic RAVDESS AV) ---
+        
+        # 1. Static Facial Expression Recognition (FER)
+        fer_probs = np.zeros_like(probs)
+        if fer_pipe is not None and middle_frame is not None and stable_box is not None:
+            try:
+                # Crop face from middle frame with safe boundary clamping
+                x_b, y_b, w_b, h_b = stable_box
+                h_m, w_m, _ = middle_frame.shape
+                
+                x1, y1 = max(0, x_b), max(0, y_b)
+                x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
+                
+                face_crop = middle_frame[y1:y2, x1:x2]
+                if face_crop.size > 0:
+                    face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(face_rgb)
+                    
+                    fer_res = fer_pipe(pil_img) # [{'label': 'happy', 'score': 0.9}, ...]
+                    label_map_fer = {
+                        "happy": "Happy", "sad": "Sad", "angry": "Angry",
+                        "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
+                    }
+                    for res in fer_res:
+                        target_label = label_map_fer.get(res['label'])
+                        if target_label in encoder.classes_:
+                            idx_class = int(np.where(encoder.classes_ == target_label)[0][0])
+                            fer_probs[idx_class] += res['score']
+                    print(f"[DEBUG] FER Probs: {fer_probs}")
+            except Exception as e:
+                print(f"[DEBUG] FER Processing failed: {e}")
+        
+        # 2. Text NLP Fusion (Asynchronous State Buffer)
+        text_probs = np.zeros_like(probs)
+        
+        def run_nlp_async(audio_p):
+            global last_known_text_probs, last_known_transcription
+            try:
+                whisper_out = whisper_pipe(audio_p)
+                transcript_text = whisper_out.get("text", "").strip()
+                if transcript_text:
+                    print(f"[DEBUG Async] Transcription: {transcript_text}")
+                    text_emotions = text_emotion_pipe(transcript_text)[0]
+                    
+                    temp_probs = np.zeros_like(probs)
+                    label_map_text = {
+                        "joy": "Happy", "sadness": "Sad", "anger": "Angry",
+                        "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral"
+                    }
+                    for res in text_emotions:
+                        t_label = label_map_text.get(res['label'])
+                        if t_label in encoder.classes_:
+                            idx_c = int(np.where(encoder.classes_ == t_label)[0][0])
+                            temp_probs[idx_c] += res['score']
+                    last_known_text_probs = temp_probs
+                    last_known_transcription = transcript_text
+            except Exception as e:
+                print(f"[DEBUG Async] NLP Processing failed: {e}")
+
+        # If speaking, launch NLP in the background so it doesn't freeze the video
+        if not audio_zeros and whisper_pipe is not None and text_emotion_pipe is not None:
+            nlp_thread = threading.Thread(target=run_nlp_async, args=(audio_path,))
+            nlp_thread.start()
+            nlp_thread.join(timeout=3.0)  # Wait for background transcription to complete
+        
+        # Pull from the state buffer instantly without waiting
+        import sys
+        _buf = sys.modules[__name__]
+        if getattr(_buf, 'last_known_text_probs', None) is not None:
+            text_probs = _buf.last_known_text_probs
+            print(f"[DEBUG] Using Buffered Text Probs: {text_probs}")
+        if getattr(_buf, 'last_known_transcription', None) is not None and _buf.last_known_transcription != "":
+            transcript_text = _buf.last_known_transcription
+        
+        # 3. Ultimate Quad-Modal Fusion Weights
+        print(f"[DEBUG] Base AV Probs: {probs}")
+        if audio_zeros:
+            # Vision-Only Mode: Rely heavily on Static FER (70%), since RAVDESS AV (30%) gets confused by silent lack-of-movement
+            transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
+            # Only fuse if FER was successfully generated
+            if np.sum(fer_probs) > 0:
+                probs = (probs * 0.3) + (fer_probs * 0.7)
+        else:
+            # Voice + Meaning Mode: Combine AV, FER, and Text
+            text_conf = np.max(text_probs) if np.sum(text_probs) > 0 else 0
+            text_weight = 0.4 if text_conf > 0.7 else (0.3 if text_conf > 0.4 else 0.0)
+            fer_weight = 0.3 if np.sum(fer_probs) > 0 else 0.0
+            
+            # --- Universal Sarcasm & Deception Override (Contextual Consensus) ---
+            if np.sum(text_probs) > 0:
+                top_text_emotion = encoder.classes_[int(np.argmax(text_probs))]
+                text_confidence = np.max(text_probs)
+                top_av_emotion = encoder.classes_[int(np.argmax(probs))]
+                av_confidence = np.max(probs)
+                
+                has_fer = np.sum(fer_probs) > 0
+                if has_fer:
+                    top_fer_emotion = encoder.classes_[int(np.argmax(fer_probs))]
+                    fer_confidence = np.max(fer_probs)
+                else:
+                    top_fer_emotion = None
+                    fer_confidence = 0.0
+                
+                is_sarcasm = False
+                
+                # Scenario A: Face and Tone AGREE, but words DISAGREE.
+                if has_fer and top_fer_emotion == top_av_emotion and top_text_emotion != top_fer_emotion:
+                    is_sarcasm = True
+                    print(f"[DEBUG] Contextual Sarcasm! Face & Tone agree on {top_fer_emotion}, but Text says {top_text_emotion}.")
+                    
+                # Scenario B: Text strongly contradicts the physical context (Tone or Tone+Face)
+                elif top_text_emotion != top_av_emotion and (not has_fer or top_text_emotion != top_fer_emotion):
+                    # If text is the odd one out, and Face/AV have decent confidence, the text is a lie.
+                    if fer_confidence > 0.30 or av_confidence > 0.30:
+                        is_sarcasm = True
+                        print(f"[DEBUG] Text Deception! Text says {top_text_emotion}, but Face= {top_fer_emotion} and Tone= {top_av_emotion}.")
+                        
+                if is_sarcasm:
+                    # Completely ignore the deceptive words
+                    print(f"[DEBUG] Overriding Text! Trusting physical context (Tone/Face).")
+                    text_weight = 0.0
+                    
+                    # Share the remaining 100% trust between Face and Tone/Motion based on their confidence
+                    total_conf = fer_confidence + av_confidence
+                    if total_conf > 0:
+                        fer_weight = fer_confidence / total_conf
+                    else:
+                        fer_weight = 0.0
+                    # av_weight will automatically become 1.0 - fer_weight later
+            
+            # If no confident words were spoken, the AV model (which expects speech) is unreliable.
+            # We must trust the visual Face model heavily, just like in pure silence mode.
+            if text_weight == 0.0 and not is_sarcasm:
+                if np.sum(fer_probs) > 0:
+                    fer_weight = 0.7
+                    
+            av_weight = 1.0 - text_weight - fer_weight
+            
+            probs = (probs * av_weight) + (fer_probs * fer_weight) + (text_probs * text_weight)
+            
+        probs = probs / (np.sum(probs) + 1e-6) # Re-normalize
+        print(f"[DEBUG] Final Fused Probs: {probs}")
+        
+        idx = int(np.argmax(probs))
+        label = encoder.inverse_transform([idx])[0]
+
         confidences = {
             encoder.inverse_transform([i])[0]: float(p)
             for i, p in enumerate(probs)
