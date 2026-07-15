@@ -796,6 +796,21 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         probs = probs / (np.sum(probs) + 1e-6) # Re-normalize
         print(f"[DEBUG] Final Fused Probs: {probs}")
         
+        # --- MICRO-EMOTION AMPLIFIER (Dynamic Vector Contrast) ---
+        # If Neutral is mathematically dominant, but a subtle secondary vector exists, we crush the Neutral mask.
+        neutral_idx = int(np.where(encoder.classes_ == 'Neutral')[0][0])
+        if np.argmax(probs) == neutral_idx:
+            # Sort the probability vector to find the hidden micro-expression
+            sorted_indices = np.argsort(probs)[::-1]
+            second_best_idx = sorted_indices[1]
+            second_best_prob = probs[second_best_idx]
+            
+            # If the subtle emotion breaches the micro-threshold (> 15% confidence)
+            if second_best_prob > 0.15:
+                print(f"[DEBUG] Micro-Expression Detected! Penalizing Neutral vector to amplify {encoder.classes_[second_best_idx]}")
+                probs[neutral_idx] *= 0.35  # Crush Neutral by 65%
+                probs = probs / (np.sum(probs) + 1e-6) # Re-normalize dynamic vector
+        
         idx = int(np.argmax(probs))
         label = encoder.inverse_transform([idx])[0]
 
