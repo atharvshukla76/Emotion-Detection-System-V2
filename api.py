@@ -495,26 +495,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     if face_crop.size == 0 or crop_h < 30 or crop_w < 30:
                         continue
                     
-                    # --- LIGHTING NORMALIZATION (CLAHE) ---
-                    # Fixes shadows, dim lighting, and uneven illumination
-                    face_lab = cv2.cvtColor(face_crop, cv2.COLOR_BGR2LAB)
-                    l_chan, a_chan, b_chan = cv2.split(face_lab)
-                    
-                    # Boost brightness if the face is too dark
-                    mean_brightness = np.mean(l_chan)
-                    if mean_brightness < 100:
-                        # Lift the brightness channel so shadows don't look like muscle tension
-                        boost = min(60, int(120 - mean_brightness))
-                        l_chan = cv2.add(l_chan, boost)
-                    
-                    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-                    l_chan = clahe.apply(l_chan)
-                    
-                    face_lab = cv2.merge([l_chan, a_chan, b_chan])
-                    face_corrected = cv2.cvtColor(face_lab, cv2.COLOR_LAB2BGR)
-                    
-                    face_rgb = cv2.cvtColor(face_corrected, cv2.COLOR_BGR2RGB)
+                    face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
                     pil_img = Image.fromarray(face_rgb)
                     
                     fer_res = fer_pipe(pil_img)
