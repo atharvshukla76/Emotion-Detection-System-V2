@@ -567,7 +567,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                     face_rgb = cv2.cvtColor(face_crop_processed, cv2.COLOR_BGR2RGB)
                     pil_img = Image.fromarray(face_rgb)
                     
-                    fer_res = fer_pipe(pil_img)
+                    fer_res = fer_pipe(pil_img, top_k=None)
                     single_probs = np.zeros_like(probs)
                     for res in fer_res:
                         target_label = label_map_fer.get(res['label'])
@@ -600,7 +600,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 
                 if transcript_text and not is_hallucination:
                     print(f"[DEBUG Async] Transcription: {transcript_text}")
-                    text_emotions = text_emotion_pipe(transcript_text)[0]
+                    text_emotions = text_emotion_pipe(transcript_text, top_k=None)[0]
                     
                     temp_probs = np.zeros_like(probs)
                     label_map_text = {
