@@ -225,15 +225,21 @@ def run_nlp_async(signal_16k):
         
         if text and not is_hal:
             print(f"[DEBUG Async] Transcription: {text}")
-            emotions = text_emotion_pipe(text, top_k=None)[0]
+            raw_res = text_emotion_pipe(text, top_k=None, truncation=True, max_length=512)
+            
+            # Safely unpack the pipeline output which varies between Hugging Face versions
+            while isinstance(raw_res, list) and len(raw_res) > 0 and isinstance(raw_res[0], list):
+                raw_res = raw_res[0]
+            emotions = [raw_res] if isinstance(raw_res, dict) else raw_res
             
             t_probs = np.zeros(len(encoder.classes_), dtype=np.float32)
             lmap = {"joy":"Happy", "sadness":"Sad", "anger":"Angry", "fear":"Fear", "disgust":"Disgust", "neutral":"Neutral", "surprise":"Neutral"}
             
             for res in emotions:
-                target = lmap.get(res['label'])
-                if target in encoder.classes_:
-                    t_probs[int(np.where(encoder.classes_ == target)[0][0])] += res['score']
+                if isinstance(res, dict) and 'label' in res:
+                    target = lmap.get(res['label'])
+                    if target in encoder.classes_:
+                        t_probs[int(np.where(encoder.classes_ == target)[0][0])] += res.get('score', 0.0)
                     
             last_known_text_probs = t_probs
             last_known_transcription = text
