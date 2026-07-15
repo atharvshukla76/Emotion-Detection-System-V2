@@ -538,10 +538,11 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         # PHILOSOPHY: Physical context (Face + Tone) ALWAYS dominates. Text is only a minor hint.
         print(f"[DEBUG] Base AV Probs: {probs}")
         if audio_zeros:
-            # Vision-Only Mode: Rely heavily on Static FER (80%), AV gets 20%
+            # Vision-Only Mode: FER gets 100% because the RAVDESS AV model was trained on
+            # speaking actors and produces garbage/random noise during silence.
             transcript_text = "[Silence]"  # Clear the text box from the UI when no one is speaking
             if np.sum(fer_probs) > 0:
-                probs = (probs * 0.2) + (fer_probs * 0.8)
+                probs = fer_probs  # 100% trust in the face - AV is useless during silence
         else:
             # Voice + Meaning Mode: Physical context dominates
             # Base weights: FER=45%, AV(Tone/Motion)=40%, Text=15% (only if confident)
