@@ -123,10 +123,9 @@ def preprocess_audio(file_path):
             print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting background noise.")
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
-        # DYNAMIC AMPLITUDE SCALING
-        # Force the audio volume to match the exact RAVDESS studio average (0.0095 std)
-        # This removes microphone gain dependency and prevents 'Anger' misclassifications from loud mics.
-        signal = signal * (0.0095 / std_sig)
+        # Removed Artificial Amplitude Scaling:
+        # We no longer force the volume to 0.0095. This prevents audio features from being corrupted
+        # if the user's AV model was not trained with forced amplitude scaling.
             
         # Trim silent boundaries from outer edges
         trimmed, index = librosa.effects.trim(signal, top_db=60)
@@ -272,8 +271,23 @@ def preprocess_video(video_path, t_start, target_frames=16, img_size=(64, 64)):
 
     # Second pass: crop and stack regions
     processed_frames = []
+    
+    # Initialize CLAHE for problem-proof lighting/shadows in Optical Flow
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    
     for frame in raw_frames:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        # --- DIM LIGHT BOOST & OUTDOOR SHADOW REMOVAL ---
+        # 1. Dim Light Boost: If overall brightness is very low, safely boost it.
+        mean_brightness = np.mean(gray)
+        if mean_brightness < 80:
+            boost = min(70, int(120 - mean_brightness))
+            gray = cv2.add(gray, boost)
+            
+        # 2. Shadow/Sunlight Equalization: Flatten harsh outdoor lighting so optical flow tracks muscles, not moving shadows.
+        gray = clahe.apply(gray)
+        
         h, w = gray.shape
         
         # Use static geometric crop matching the training pipeline exactly
