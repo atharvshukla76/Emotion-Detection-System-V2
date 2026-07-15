@@ -802,12 +802,15 @@
             }
 
             // Map base coordinates
-            let baseW = rawRect.width * scale;
-            let baseH = rawRect.height * scale;
             let baseX = (rawRect.x * scale) + offsetX;
             let baseY = (rawRect.y * scale) + offsetY;
+            let baseW = rawRect.width * scale;
+            let baseH = rawRect.height * scale;
+            
+            // Visually expand the UI bounding box downwards by 25% to cover the chin/lips
+            baseH = baseH * 1.25;
 
-            // Apply horizontal mirroring (webcam is flipped)
+            // Mirror coordinates for selfie view
             let finalX = faceCanvas.width - baseX - baseW;
             let finalY = baseY;
 
