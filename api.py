@@ -238,8 +238,6 @@ def run_nlp_async(signal_16k):
 def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_path: str):
     global last_known_text_probs, last_known_transcription
     try:
-        last_known_text_probs = None
-        last_known_transcription = ""
         
         # 1. Extract Features
         aud_feat, t_start, clean_sig, aud_silent = preprocess_audio(audio_path)
@@ -260,7 +258,9 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             sig_16k = librosa.resample(y=clean_sig, orig_sr=SR, target_sr=16000).astype(np.float32)
             nlp_thread = threading.Thread(target=run_nlp_async, args=(sig_16k,))
             nlp_thread.start()
-            nlp_thread.join(timeout=25.0)
+            # Asynchronous State Buffer: We DO NOT join the thread. 
+            # The API will retrieve the last known NLP state and return instantly, 
+            # while Whisper updates the global buffer for the next inference frame.
             
         # 3. Retrieve Probabilities
         probs_av = model.predict({"audio_input": aud_feat, "video_input": vid_feat}, verbose=0)[0]
