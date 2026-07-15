@@ -115,7 +115,10 @@ def preprocess_audio(file_path):
             signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.85)
             
         std_sig = np.std(signal)
-        if len(signal) == 0 or std_sig < 0.002:
+        # --- REFINED VAD THRESHOLD ---
+        # 0.0075 perfectly balances sensitivity: mutes fan/hiss noise but detects normal speech
+        if len(signal) == 0 or std_sig < 0.0075:
+            print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting background noise.")
             return np.zeros(TARGET_AUDIO_SHAPE, dtype=np.float32), 0.0
             
         # DYNAMIC AMPLITUDE SCALING
@@ -545,7 +548,14 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             try:
                 whisper_out = whisper_pipe(audio_p)
                 transcript_text = whisper_out.get("text", "").strip()
-                if transcript_text:
+                
+                # --- WHISPER HALLUCINATION FILTER ---
+                # Whisper tries to transcribe silence/hum as these common phrases
+                lower_text = transcript_text.lower()
+                hallucinations = ["thank you", "subscribe", "thanks for watching", "by subtitlr", "subs by", "amil amara"]
+                is_hallucination = any(h == lower_text.strip(" .!,") or lower_text == "" for h in hallucinations)
+                
+                if transcript_text and not is_hallucination:
                     print(f"[DEBUG Async] Transcription: {transcript_text}")
                     text_emotions = text_emotion_pipe(transcript_text)[0]
                     
@@ -616,10 +626,27 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             align_semantic_tone = (top_text == top_tone) if has_text else False   # Text matches Tone
             align_semantic_face = (top_text == top_vision) if (has_text and has_fer) else False # Text matches Face
             
-            # 4. Contextual Attention Weighting
-            w_vision = 0.45 if has_fer else 0.0
-            w_tone = 0.40
+            # 4. Contextual Attention Weighting (Macro vs Micro Expressions)
+            # Static Vision (FER) = Macro Expressions (Exaggerated)
+            # AV Model (SAMM/Optical Flow) = Tone + Micro Expressions (Subtle smirks, twitches)
+            
             w_text = 0.15 if conf_text > 0.4 else 0.0
+            
+            if has_fer:
+                if conf_vision < 0.60:
+                    # MICRO-EXPRESSION DETECTED: FER is uncertain because the expression is too subtle.
+                    # Shift majority authority to the SAMM-trained AV model which uses optical flow.
+                    print(f"[DEBUG] Micro-Expression Detected (FER conf: {conf_vision:.2f}). Shifting power to SAMM AV Model.")
+                    w_tone = 0.65
+                    w_vision = 0.20
+                else:
+                    # MACRO-EXPRESSION DETECTED: FER is highly confident. Balance equally.
+                    print(f"[DEBUG] Macro-Expression Detected (FER conf: {conf_vision:.2f}). Balancing power.")
+                    w_vision = 0.45
+                    w_tone = 0.40
+            else:
+                w_vision = 0.0
+                w_tone = 0.85
             
             is_sarcasm = False
             
