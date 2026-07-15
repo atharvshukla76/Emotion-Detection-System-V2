@@ -112,10 +112,17 @@ def preprocess_audio(file_path):
     try:
         signal, _ = librosa.load(file_path, sr=SR)
         
-        # 1. VAD & Whisper Signal
-        # We don't zero out the Emotion model because feeding it pure zeros causes it to output random bias weights.
-        # Instead, we only mute Whisper if the audio is extremely quiet (peak < 0.01) to prevent hallucinated scripts.
-        whisper_signal = signal if np.max(np.abs(signal)) > 0.01 else None
+        # 1. VAD & Whisper Signal (Noise-reduced for NLP)
+        std_sig = np.std(signal)
+        whisper_signal = None
+        # VAD Threshold: 0.005 (Safe for quiet webcams, but still acts as a true VAD)
+        if len(signal) == 0 or std_sig < 0.005:
+            print(f"[DEBUG] VAD Silence Detected (std: {std_sig:.5f}). Muting Whisper.")
+            # We do NOT zero out the Emotion model! It handles its own silence gracefully.
+        else:
+            # Apply Noise Reduction ONLY for Whisper to remove fan/background hums.
+            # prop_decrease=0.75 is safe enough to not mutilate human voices.
+            whisper_signal = nr.reduce_noise(y=signal, sr=SR, prop_decrease=0.75)
 
         # 2. Emotion Model Signal (Strictly matching training: top_db=30, zero-center, NO scaling/NR)
         trimmed, index = librosa.effects.trim(signal, top_db=30)
