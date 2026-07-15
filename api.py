@@ -470,9 +470,8 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         # 1. Static Facial Expression Recognition (FER)
         fer_probs = np.zeros_like(probs)
         # fer_frames is a list of 1-3 frames for multi-frame averaging
-        if fer_pipe is not None and fer_frames and len(fer_frames) > 0 and stable_box is not None:
+        if fer_pipe is not None and fer_frames and len(fer_frames) > 0:
             try:
-                x_b, y_b, w_b, h_b = stable_box
                 label_map_fer = {
                     "happy": "Happy", "sad": "Sad", "angry": "Angry",
                     "fear": "Fear", "disgust": "Disgust", "neutral": "Neutral", "surprise": "Neutral",
@@ -483,15 +482,26 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 
                 # Average FER predictions across multiple frames for stability
                 frame_predictions = []
+                face_cascade_fer = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+                
                 for frame in fer_frames:
+                    gray_fer = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    faces_fer = face_cascade_fer.detectMultiScale(gray_fer, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
+                    
+                    if len(faces_fer) == 0:
+                        continue
+                        
+                    # Get the largest face in this specific frame
+                    x_c, y_c, w_c, h_c = max(faces_fer, key=lambda f: f[2] * f[3])
                     h_m, w_m, _ = frame.shape
-                    x1, y1 = max(0, x_b), max(0, y_b)
-                    x2, y2 = min(w_m, x_b + w_b), min(h_m, y_b + h_b)
+                    
+                    x1, y1 = max(0, x_c), max(0, y_c)
+                    x2, y2 = min(w_m, x_c + w_c), min(h_m, y_c + h_c)
                     
                     face_crop = frame[y1:y2, x1:x2]
                     crop_h, crop_w = face_crop.shape[:2]
                     
-                    # Reject tiny or degenerate crops (bad bounding box)
+                    # Reject tiny or degenerate crops
                     if face_crop.size == 0 or crop_h < 30 or crop_w < 30:
                         continue
                     
