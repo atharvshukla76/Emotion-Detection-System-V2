@@ -376,6 +376,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
             }
         }
     except Exception as e:
+        print(f"[FATAL ERROR IN THREAD]: {e}")
         traceback.print_exc()
         prediction_tasks[task_id] = {"status": "failed", "error": str(e)}
     finally:
