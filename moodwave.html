@@ -1092,8 +1092,8 @@
           }
           // if status is 'processing', loop will continue automatically
         }
-
-        showResults(result);
+        
+        showResults(result.result);
       } catch (err) {
         console.error('Analysis failed:', err);
         cardTitle.textContent = "Analysis Failed";
