@@ -332,7 +332,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 
         # Environmental Shields
         if has_fer:
-            if m_mean > 0.3:
+            if m_mean > 2.0:
                 print("[DEBUG] Shield: Camera Shake. Trusting Static ViT.")
                 wf = 0.85; wav = 0.15; wt = 0.0
             elif v_bright < 80:
