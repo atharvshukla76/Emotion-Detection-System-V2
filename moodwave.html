@@ -1101,7 +1101,7 @@
         if (err.name === 'AbortError') {
           cardInstructions.textContent = '⏱ Server is still processing. Please try again in a moment.';
         } else {
-          cardInstructions.textContent = '⚠ Could not reach the AI server. Check your connection.';
+          cardInstructions.textContent = '⚠ Server Error: ' + err.message;
         }
         btnText.textContent = "Try Again";
         btnIcon.textContent = "↺";
