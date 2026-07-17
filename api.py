@@ -307,9 +307,9 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         
         # Algorithm 1 Base Implementation
         if not aud_silent:
-            wt = 0.4 if has_text and np.max(probs_text) > 0.7 else 0.3
+            wt = 0.3 if has_text and np.max(probs_text) > 0.7 else 0.2
             if not has_text: wt = 0.0
-            wf = 0.3 if has_fer else 0.0
+            wf = 0.4 if has_fer else 0.0
             wav = 1.0 - wt - wf
         else:
             wt = 0.0
@@ -353,9 +353,12 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         if np.argmax(final_probs) == n_idx:
             srt = np.argsort(final_probs)[::-1]
             if final_probs[srt[1]] > 0.28:
-                print(f"[DEBUG] Micro-Expression Amplifier triggered for {encoder.classes_[srt[1]]}")
-                final_probs[n_idx] *= 0.35
-                final_probs = final_probs / (np.sum(final_probs) + 1e-6)
+                if encoder.classes_[srt[1]] == 'Disgust' and m_mean < 0.8:
+                    pass # Ignore false Disgust on resting face
+                else:
+                    print(f"[DEBUG] Micro-Expression Amplifier triggered for {encoder.classes_[srt[1]]}")
+                    final_probs[n_idx] *= 0.35
+                    final_probs = final_probs / (np.sum(final_probs) + 1e-6)
                 
         final_idx = int(np.argmax(final_probs))
         pred_label = encoder.inverse_transform([final_idx])[0]
