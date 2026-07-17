@@ -352,7 +352,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
         n_idx = int(np.where(encoder.classes_ == 'Neutral')[0][0])
         if np.argmax(final_probs) == n_idx:
             srt = np.argsort(final_probs)[::-1]
-            if final_probs[srt[1]] > 0.15:
+            if final_probs[srt[1]] > 0.28:
                 print(f"[DEBUG] Micro-Expression Amplifier triggered for {encoder.classes_[srt[1]]}")
                 final_probs[n_idx] *= 0.35
                 final_probs = final_probs / (np.sum(final_probs) + 1e-6)
