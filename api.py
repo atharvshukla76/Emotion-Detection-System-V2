@@ -362,27 +362,7 @@ def process_prediction_task(task_id: str, temp_dir: str, video_path: str, audio_
                 
         final_idx = int(np.argmax(final_probs))
         pred_label = encoder.inverse_transform([final_idx])[0]
-        
-        # --- NEW CROSS-MODAL VETO LOGIC FOR DISGUST ---
-        if pred_label == 'Disgust':
-                 if not aud_silent: # scenario 1: user talk
-                    t_pred = encoder.classes_[int(np.argmax(probs_text))] if has_text else 'Neutral'
-                    a_pred = encoder.classes_[int(np.argmax(probs_av))]
-
-                    if a_pred == 'Neutral' and t_pred == 'Neutral':
-                        pred_label = 'Neutral'
-                        final_probs[final_idx] = 0.0 # Zero out Disgust
-                        final_probs[n_idx] += 0.5    # Boost Neutral
-                 else: # scenario 2 : user silent
-                      # Check your Video CNN Optical Flow variable (m_mean)
-                      if m_mean < 1.0 : #practically zero muscle movement
-                          pred_label = 'Neutral'
-                          final_probs[final_idx] = 0.0 # Zero out Disgust
-                          final_probs[n_idx] += 0.5
-
-                     
-                  
-
+                          
 
         prediction_tasks[task_id] = {
             "status": "completed",
