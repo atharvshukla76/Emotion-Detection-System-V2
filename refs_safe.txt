@@ -1,0 +1,100 @@
+TABLE VIII
+SUMMARY OF KEY PROJECT ACHIEVEMENTS
+Metric
+Achievement
+Architecture
+Quad-Modal (AV Attention + FER + NLP)
+Fusion Strategy
+Cross-Modal Multi-Head Attention + Adap-
+tive Weights
+Hardware
+100% Local CPU Processing
+Accuracy / AUC
+61.21% / 0.90 mean AUC
+Target Audience
+Tele-therapy, Education, Automotive
+A. Future Work and Development Roadmap
+Moving forward, we have planned a three-phase Roadmap
+to upgrade this system from a local prototype to a fully
+upgraded and deployable application, without losing our focus
+on user privacy.
+1) Phase 1: Hardware Acceleration. Right now, the sys-
+tem is bottlenecked by the HP Victus CPU. our first
+goal is to rewrite the inference engine to support CUDA.
+By offloading the CNN and RoBERTa models to an
+NVIDIA GPU, we expect to hit a flawless 60 FPS real-
+time processing speed.
+2) Phase 2: Penta-Modal Integration. Visual and audio
+cues can sometimes be faked by the user. To prevent
+this, we plan to integrate smart watch APIs to pull
+in the live Hear-Rate variability (HRV) and Galvanic
+Skin Response (GSR). Adding this fifth modality (Penta-
+Modal) will make the system nearly foolproof.
+3) phase 3: Real Time Learning. Sometimes Inference
+mode of the system gives emotion prediction based on
+learned and trained features and test cases. So, our goal
+is to make it a real time learner, that makes it to learn
+from new and different types of real-world scenarios.
+4) Phase 4: Mobile Edge Deployment. Finally, we need
+to drastically shrink the deep learning models using
+technique called Quantization. By making the model
+smaller, we can deploy the entire Quad-Modal system
+directly onto Android or iOS smartphone, allowing users
+to have a private mental health companion in their
+pocket.
+ACKNOWLEDGMENTS
+We want to say a massive thank you to our project guide
+for their invaluable mentorship, technical guidance, and con-
+tinuous support throughout this research. I also extend my
+deepest appreciation to the Department of Computer Science
+and Engineering at Harcourt Buttler Technical University. The
+facilities, resources and academic environment provided by
+University were instrumental in the successful development
+and implementation of this project.
+REFERENCES
+[1] P. Ekman and W. V. Friesen, Constants across cultures in the face and
+emotion, Journal of Personality and Social Psychology, vol. 17, no. 2,
+pp. 124129, 1971.
+[2] S. R. Livingstone and F. A. Russo, The Ryerson Audio-Visual Database
+of Emotional Speech and Song (RAVDESS), PLOS ONE, vol. 13, no.
+5, 2018.
+[3] A. K. Davison et al., SAMM: A Spontaneous Micro-Facial Movement
+Dataset, IEEE Transactions on Affective Computing, vol. 9, no. 1, pp.
+116129, 2018.
+[4] H. Cao et al., CREMA-D: Crowd-sourced Emotional Multimodal
+Actors Dataset, IEEE Transactions on Affective Computing, vol. 5, no.
+4, pp. 377-390, 2014.
+[5] A. Radford et al., Robust Speech Recognition via Large-Scale Weak
+Supervision (Whisper), arXiv preprint arXiv:2212.04356, 2022.
+[6] Y. Liu et al., RoBERTa: A Robustly Optimized BERT Pretraining
+Approach, arXiv preprint arXiv:1907.11692, 2019.
+[7] K. He, X. Zhang, S. Ren, and J. Sun, Deep Residual Learning for
+Image Recognition, Proc. IEEE Conf. Comput. Vis. Pattern Recognit.
+(CVPR), pp. 770778, 2016.
+[8] D. Tran, L. Bourdev, R. Fergus, L. Torresani, and M. Paluri, Learning
+Spatiotemporal Features with 3D Convolutional Networks, Proc. IEEE
+Int. Conf. Comput. Vis. (ICCV), pp. 44894497, 2015.
+[9] S. Poria, E. Cambria, R. Bajpai, and A. Hussain, A review of affective
+computing: From unimodal analysis to multimodal fusion, Information
+Fusion, vol. 37, pp. 98125, 2017.
+[10] T. Baltrusaitis, C. Ahuja, and L. Morency, Multimodal Machine Learn-
+ing: A Survey and Taxonomy, IEEE Transactions on Pattern Analysis
+and Machine Intelligence, vol. 41, no. 2, pp. 423443, 2019.
+[11] M. S. Hossain and G. Muhammad, Emotion recognition using deep
+learning approach from audio-visual emotional big data, Information
+Fusion, vol. 49, pp. 6978, 2019.
+[12] P. Viola and M. Jones, Robust real-time face detection, Proc. IEEE
+Int. Conf. Comput. Vis. (ICCV), vol. 2, pp. 747754, 2001.
+[13] G. Bradski, The OpenCV Library, Dr. Dobbs Journal of Software
+Tools, vol. 25, pp. 120123, 2000.
+[14] C. G. Busso et al., IEMOCAP: Interactive emotional dyadic motion
+capture database, Language resources and evaluation, vol. 42, no. 4,
+pp. 335359, 2008.
+[15] B. Schuller, S. Steidl, and A. Batliner, The INTERSPEECH 2009 emo-
+tion challenge, Tenth Annual Conference of the International Speech
+Communication Association, 2009.
+[16] J. Macbeth and C. Rogers, Throwing shade: The science of resting
+bitch face, Noldus Information Technology, 2015.
+[17] A. Mollahosseini, B. Hasani, and M. H. Mahoor, AffectNet: A database
+for facial expression, valence, and arousal computing in the wild, IEEE
+Transactions on Affective Computing, vol. 10, no. 1, pp. 18-31, 2017.

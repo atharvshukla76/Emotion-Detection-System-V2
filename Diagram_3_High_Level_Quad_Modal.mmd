@@ -1,0 +1,13 @@
+graph LR
+    A["Audio Model (1D CNN)"] --> E["Dynamic Weighting Fusion Engine"]
+    B["Dynamic Video Model (3D CNN)"] --> E
+    C["NLP Model (Whisper + RoBERTa)"] --> E
+    D["Static Face Model(ResNet)"] --> E
+    E --> F["Final Emotion"]
+
+    style A fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+    style B fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000
+    style C fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,color:#000
+    style D fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
+    style E fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000
+    style F fill:#f5f5f5,stroke:#424242,stroke-width:2px,color:#000

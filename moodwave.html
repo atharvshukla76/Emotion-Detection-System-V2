@@ -563,6 +563,11 @@
         The system will detect your emotional state.
       </p>
 
+      <div id="sarcasmBadge"
+        style="display: none; margin-bottom: 15px; background: rgba(255, 51, 102, 0.15); border: 1px solid #FF3366; border-radius: 20px; padding: 6px 16px; color: #FF3366; font-weight: bold; font-size: 13px; letter-spacing: 1px; animation: pulse-ring 1.5s infinite alternate;">
+        😏 SARCASM DETECTED — Facial Expression Contradicts Spoken Tone
+      </div>
+
       <div id="transcriptionBox"
         style="display: none; width: 100%; margin-bottom: 20px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; text-align: center;">
         <span
@@ -604,25 +609,28 @@
       { name: 'Sad', color: '#6699FF' },
       { name: 'Fear', color: '#CC44FF' },
       { name: 'Neutral', color: '#00C8FF' },
-      { name: 'Disgust', color: '#44FF88' }
+      { name: 'Disgust', color: '#44FF88' },
+      { name: 'Surprise', color: '#FF9900' }
     ];
 
     const ADVICE_STRINGS = {
-      'Happy': "Use this energy productively.\n→ Start something meaningful.\n→ Share positivity.\n→ Capture the moment.",
-      'Angry': "Pause before reacting.\n→ Take deep breaths (inhale 4s, exhale 6s).\n→ Walk away from the situation.\n→ Avoid decisions right now.",
-      'Sad': "Talk to someone you trust.\n→ Write your thoughts down.\n→ Listen to uplifting music.\n→ Do one small task.",
-      'Fear': "Slow your breathing.\n→ Ask: is this real or imagined?\n→ Break problems into small steps.\n→ Stay grounded in present.",
-      'Neutral': "Best time for deep work.\n→ Start something important.\n→ Avoid distractions.\n→ Plan clearly.",
-      'Disgust': "Step away from the trigger.\n→ Reset your environment.\n→ Shift focus.\n→ Avoid dwelling."
+      'Happy':   "Use this energy productively.\n→ Start something meaningful.\n→ Share positivity with someone.\n→ Capture this moment.\n→ Set a goal while motivated.",
+      'Angry':   "Pause before reacting.\n→ Take deep breaths (inhale 4s, exhale 6s).\n→ Walk away from the situation.\n→ Avoid decisions right now.\n→ Write down what triggered you.",
+      'Sad':     "Talk to someone you trust.\n→ Write your thoughts down.\n→ Listen to uplifting music.\n→ Do one small productive task.\n→ Remember: this feeling is temporary.",
+      'Fear':    "Slow your breathing.\n→ Ask: is this real or imagined?\n→ Break problems into small steps.\n→ Stay grounded in the present moment.\n→ Talk to someone you trust.",
+      'Neutral': "Best time for deep focused work.\n→ Start something important.\n→ Avoid distractions.\n→ Plan your next 3 hours clearly.\n→ Learn something new.",
+      'Disgust': "Step away from the trigger.\n→ Reset your environment.\n→ Shift your focus intentionally.\n→ Avoid dwelling on negatives.\n→ Do something you genuinely enjoy."
     };
 
+    // YouTube search-based recommendations (no API key required)
+    // Clicking any song opens a YouTube search in a new tab
     const MOCK_SONGS = {
-      'Happy': ['Walking On Sunshine', 'Happy', 'Good Vibrations'],
-      'Angry': ['Break Stuff', 'Killing In The Name', 'Given Up'],
-      'Sad': ['Someone Like You', 'Fix You', 'Breathe Me'],
-      'Fear': ['Echoes', 'Climbing Up The Walls', 'Lullaby'],
-      'Neutral': ['Weightless', 'Clair de Lune', 'Teardrop'],
-      'Disgust': ['Toxicity', 'The Pot', 'Schism']
+      'Happy':   ['Happy - Pharrell Williams', 'Walking On Sunshine - Katrina', 'Good Vibrations - Beach Boys', 'Shake It Off - Taylor Swift', 'Uptown Funk - Bruno Mars'],
+      'Angry':   ['Break Stuff - Limp Bizkit', 'Killing In The Name - RATM', 'Given Up - Linkin Park', 'Numb - Linkin Park', 'In The End - Linkin Park'],
+      'Sad':     ['Someone Like You - Adele', 'Fix You - Coldplay', 'Breathe Me - Sia', 'The Night Will Always Win - Manchester Orchestra', 'Skinny Love - Bon Iver'],
+      'Fear':    ['Echoes - Pink Floyd', 'Climbing Up The Walls - Radiohead', 'Lullaby - The Cure', 'Afraid - The Neighbourhood', 'Creep - Radiohead'],
+      'Neutral': ['Weightless - Marconi Union', 'Clair de Lune - Debussy', 'Teardrop - Massive Attack', 'Experience - Ludovico Einaudi', 'River Flows In You - Yiruma'],
+      'Disgust': ['Toxicity - System of a Down', 'The Pot - Tool', 'Schism - Tool', 'Vicarious - Tool', 'Judith - A Perfect Circle']
     };
 
     /* ─── DOM Elements ─── */
@@ -783,13 +791,13 @@
           if (event.data.length > 0) {
             // Find the largest face detected
             const rawRect = event.data.reduce((max, f) => (f.width * f.height > max.width * max.height) ? f : max, event.data[0]);
-            
+
             // Calculate scale and offset for object-fit: cover
             const vidW = webcamPreview.videoWidth || 640;
             const vidH = webcamPreview.videoHeight || 480;
             const vidRatio = vidW / vidH;
             const canvasRatio = faceCanvas.width / faceCanvas.height;
-            
+
             let scale, offsetX = 0, offsetY = 0;
             if (vidRatio > canvasRatio) {
               // Video is wider - cropped on sides
@@ -806,7 +814,7 @@
             let baseY = (rawRect.y * scale) + offsetY;
             let baseW = rawRect.width * scale;
             let baseH = rawRect.height * scale;
-            
+
             // Visually expand the UI bounding box downwards by 25% to cover the chin/lips
             baseH = baseH * 1.25;
 
@@ -854,13 +862,13 @@
     async function startPreview() {
       try {
         if (!mediaStream) {
-          mediaStream = await navigator.mediaDevices.getUserMedia({ 
+          mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               echoCancellation: false,
               noiseSuppression: false,
               autoGainControl: false
-            }, 
-            video: true 
+            },
+            video: true
           });
           webcamPreview.srcObject = mediaStream;
         }
@@ -1074,25 +1082,25 @@
         while (true) {
           // Wait 2 seconds between polls
           await new Promise(resolve => setTimeout(resolve, 2000));
-          
+
           const pollResponse = await fetch(`/result/${taskId}`);
-          
+
           if (!pollResponse.ok) {
-             const errText = await pollResponse.text().catch(() => '');
-             throw new Error(`Server error (${pollResponse.status}): ${errText}`);
+            const errText = await pollResponse.text().catch(() => '');
+            throw new Error(`Server error (${pollResponse.status}): ${errText}`);
           }
-          
+
           const pollResult = await pollResponse.json();
-          
+
           if (pollResult.status === 'completed') {
-             result = pollResult;
-             break;
+            result = pollResult;
+            break;
           } else if (pollResult.status === 'failed') {
-             throw new Error(pollResult.error || 'Unknown prediction error');
+            throw new Error(pollResult.error || 'Unknown prediction error');
           }
           // if status is 'processing', loop will continue automatically
         }
-        
+
         showResults(result.result);
       } catch (err) {
         console.error('Analysis failed:', err);
@@ -1152,6 +1160,12 @@
       cardInstructions.style.whiteSpace = 'pre-line';
 
       waveParams = { amplitude: 10, frequency: 0.02, speed: 0.05, offset: waveParams.offset, color: winner.color, glow: 10, opacity: 0.8 };
+
+      if (data.sarcasm) {
+        document.getElementById('sarcasmBadge').style.display = 'inline-block';
+      } else {
+        document.getElementById('sarcasmBadge').style.display = 'none';
+      }
 
       if (data.transcription && data.transcription.trim() !== "") {
         document.getElementById('transcriptionBox').style.display = 'block';

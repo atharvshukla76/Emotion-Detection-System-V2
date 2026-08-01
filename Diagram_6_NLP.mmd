@@ -1,0 +1,19 @@
+graph LR
+  subgraph Top [" "]
+    direction LR
+    A_IN["Audio Input"]:::nlp --> W_FEAT["Log-Mel Spectrogram"]:::nlp
+    W_FEAT --> W_ENC["Whisper Encoder<br>Transformer Blocks"]:::nlp
+    W_ENC --> W_DEC["Whisper Decoder<br>Transformer Blocks"]:::nlp
+    W_DEC --> TXT["Transcribed Text"]:::nlp
+  end
+  subgraph Bottom [" "]
+    direction TD
+    TOK["Byte-Pair Encoding BPE<br>Tokenization"]:::nlp --> EMB["Token + Position<br>Embeddings"]:::nlp
+    EMB --> T_L1["Transformer Layers x6<br>-- Multi-Head Self-Attention<br>--LayerNorm & Feed Forward"]:::nlp
+    T_L1 --> CLS["CLS Token Extraction"]:::nlp
+    CLS --> FV["Text Feature Vector<br>T ∈ R^768"]:::nlp
+  end
+  TXT --> TOK
+  classDef nlp fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,color:#000;
+  style Top fill:none,stroke:none,color:transparent;
+  style Bottom fill:none,stroke:none,color:transparent;

@@ -24,3 +24,9 @@ yt_cache.json
 docs/
 render.yaml
 .python-version
+
+*.npz
+unpacked_*/
+archive/
+scratch/
+

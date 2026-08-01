@@ -1,0 +1,7 @@
+sequenceDiagram
+    participant NLP as Async NLP Thread (210ms)
+    participant Buffer as Shared Memory Buffer
+    participant Main as Main thread Video/Audio/FER (15ms)
+    
+    NLP->>Buffer: Write State
+    Main->>Buffer: Read State

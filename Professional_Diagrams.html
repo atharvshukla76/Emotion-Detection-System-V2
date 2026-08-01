@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Professional Architecture Diagrams</title>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ 
+          startOnLoad: true, 
+          theme: 'base',
+          themeVariables: {
+              background: '#ffffff',
+              primaryTextColor: '#000000',
+              lineColor: '#000000',
+              fontFamily: 'arial'
+          }
+      });
+    </script>
+    <style>
+        body { background-color: #ffffff; padding: 40px; font-family: Arial, sans-serif; }
+        .diagram-container { margin-bottom: 80px; border: 1px solid #eee; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        h2 { color: #333; margin-bottom: 20px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .mermaid { display: flex; justify-content: center; background-color: #ffffff; }
+    </style>
+</head>
+<body>
+    <h1>Quad-Modal Emotion Detection System - Architecture Diagrams</h1>
+    <p>Open this file in your web browser (Chrome or Edge), and you will see all your diagrams rendered perfectly with colored boxes and a pure white background. You can take screenshots of each one for your paper.</p>
+
+    <!-- DIAGRAM 1 -->
+    <div class="diagram-container">
+        <h2>1. Asynchronous Threading Model</h2>
+        <div class="mermaid">
+        sequenceDiagram
+            participant NLP as Async NLP Thread (210ms)
+            participant Buffer as Shared Memory Buffer
+            participant Main as Main thread Video/Audio/FER (15ms)
+            
+            NLP->>Buffer: Write State
+            Main->>Buffer: Read State
+        </div>
+    </div>
+
+    <!-- DIAGRAM 2 -->
+    <div class="diagram-container">
+        <h2>2. Cross-Modal Attention Architecture</h2>
+        <div class="mermaid">
+        graph LR
+            A["Audio Input<br>(Mel-Spectrogram)"] --> C["1D CNN Layers"]
+            B["Video input<br>(Optical Flow)"] --> D["3D/2D CNN Layers"]
+            C --> E["Cross-Modal Multi-Head<br>Attention Layer"]
+            D --> E
+            E --> F["Dense Layer Emotion<br>Prediction"]
+            style A fill:#c8e6c9,stroke:#2e7d32,color:#000
+            style B fill:#bbdefb,stroke:#1565c0,color:#000
+            style C fill:#c8e6c9,stroke:#2e7d32,color:#000
+            style D fill:#bbdefb,stroke:#1565c0,color:#000
+            style E fill:#ffcdd2,stroke:#c62828,color:#000
+            style F fill:#f5f5f5,stroke:#424242,color:#000
+        </div>
+    </div>
+
+    <!-- DIAGRAM 3 -->
+    <div class="diagram-container">
+        <h2>3. High-Level Quad-Modal Fusion</h2>
+        <div class="mermaid">
+        graph LR
+            A["Audio Model (1D CNN)"] --> E["Dynamic Weighting Fusion Engine"]
+            B["Dynamic Video Model (3D CNN)"] --> E
+            C["NLP Model (Whisper + RoBERTa)"] --> E
+            D["Static Face Model(ResNet)"] --> E
+            E --> F["Final Emotion"]
+
+            style A fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+            style B fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000
+            style C fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,color:#000
+            style D fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
+            style E fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000
+            style F fill:#f5f5f5,stroke:#424242,stroke-width:2px,color:#000
+        </div>
+    </div>
+
+    <!-- DIAGRAM 4 -->
+    <div class="diagram-container">
+        <h2>4. Dynamic Weighting Decision Tree</h2>
+        <div class="mermaid">
+        graph TD
+            A{"Does VAD Detect Speech?"}
+            A -- Yes --> B["Enable All Pipelines"]
+            B --> C["Weights: Pav, Pf, Pt"]
+            A -- No --> D["Silence Detected"]
+            D --> E["Audio Weights = 0<br>Text Weights = 0"]
+            E --> F["Rely entirely on Pf Static Vision"]
+
+            style A fill:#fff9c4,stroke:#fbc02d,color:#000
+            style B fill:#c8e6c9,stroke:#2e7d32,color:#000
+            style C fill:#c8e6c9,stroke:#2e7d32,color:#000
+            style D fill:#ffcdd2,stroke:#c62828,color:#000
+            style E fill:#ffcdd2,stroke:#c62828,color:#000
+            style F fill:#ffe0b2,stroke:#ef6c00,color:#000
+        </div>
+    </div>
+
+    <!-- DIAGRAM 5 -->
+    <div class="diagram-container">
+        <h2>5. Video CNN Sub-Model (Vertical Layout)</h2>
+        <div class="mermaid">
+        graph TD
+            classDef vid fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000;
+            IN["Video Input<br>15 frames"]:::vid --> PRE["Grayscale & Optical Flow<br>Resize 64x64, stack 30<br>channels"]:::vid
+            PRE --> S1["Stage 1<br>Conv2D (32, 3x3) -><br>BatchNorm<br>-> ReLU -> MaxPool 2x2"]:::vid
+            S1 --> S2["Stage 2<br>Conv2D(64, 3x3) -> BatchNorm<br>-> ReLU -> MaxPool 2x2"]:::vid
+            S2 --> S3["Stage 3<br>Conv2D (64, 3x3) -><br>BatchNorm<br>-> ReLU -> Dropout"]:::vid
+            S3 --> GAP["Global Average Pooling<br>2D"]:::vid
+            GAP --> DENSE["Dense Layer 64<br>Neurons"]:::vid
+            DENSE --> FV["Video Feature Vector<br>V ∈ R^64"]:::vid
+        </div>
+    </div>
+
+    <!-- DIAGRAM 6 -->
+    <div class="diagram-container">
+        <h2>6. NLP (Whisper + RoBERTa) Sub-Model (Vertical Layout)</h2>
+        <div class="mermaid">
+        graph TD
+            classDef nlp fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,color:#000;
+            A_IN["Audio Input"]:::nlp --> W_FEAT["Log-Mel Spectrogram"]:::nlp
+            W_FEAT --> W_ENC["Whisper Encoder<br>Transformer Blocks"]:::nlp
+            W_ENC --> W_DEC["Whisper Decoder<br>Transformer Blocks"]:::nlp
+            W_DEC --> TXT["Transcribed Text"]:::nlp
+            TXT --> TOK["Byte-Pair Encoding BPE<br>Tokenization"]:::nlp
+            TOK --> EMB["Token + Position<br>Embeddings"]:::nlp
+            EMB --> T_L1["Transformer Layers x6<br>-- Multi-Head Self-Attention<br>--LayerNorm & Feed Forward"]:::nlp
+            T_L1 --> CLS["CLS Token Extraction"]:::nlp
+            CLS --> FV["Text Feature Vector<br>T ∈ R^768"]:::nlp
+        </div>
+    </div>
+
+    <!-- DIAGRAM 7 -->
+    <div class="diagram-container">
+        <h2>7. Audio CNN Sub-Model (Vertical Layout)</h2>
+        <div class="mermaid">
+        graph TD
+            classDef aud fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000;
+            IN["Audio Input 3 sec Clip<br>22050Hz"]:::aud --> PRE["Librosa Preprocessing<br>Mel-Spectrogram + MFCC<br>150 x 156 x 1 Matrix"]:::aud
+            PRE --> S1["Stage 1<br>Conv2D (32, 3x3) -><br>MaxPool<br>Conv2D (64, 3x3) -><br>MaxPool"]:::aud
+            S1 --> S2["Stage 2<br>Conv2D (32, 3x3) -> MaxPool<br>Conv2D (64, 3x3) -> MaxPool"]:::aud
+            S2 --> S3["Stage 3<br>Conv2D (64, 3x3) -> MaxPool<br>Conv2D (64, 3x3)"]:::aud
+            S3 --> S4["Stage 4<br>Conv2D (64, 3x3) -> MaxPool<br>Conv2D (64, 3x3)"]:::aud
+            S4 --> RESHAPE["Reshape to 1D Sequence"]:::aud
+            RESHAPE --> S5["Stage 5<br>Conv1D (64, 1x1)<br>Conv1D (32, 3x3)"]:::aud
+            S5 --> GAP["Global Average Pooling<br>1D"]:::aud
+            GAP --> DENSE["Dense Layer 64 Neurons"]:::aud
+            DENSE --> FV["Audio Feature Vector<br>A ∈ R^64"]:::aud
+        </div>
+    </div>
+
+    <!-- DIAGRAM 8 -->
+    <div class="diagram-container">
+        <h2>8. Static Vision (ResNet50) Sub-Model (Vertical Layout)</h2>
+        <div class="mermaid">
+        graph TD
+            classDef res fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000;
+            IN["Cropped Face Single<br>Frame"]:::res --> INIT["Initial Convolution<br>Conv 7x7 --><br>BatchNorm --> ReLU<br>--> MaxPool"]:::res
+            INIT --> S1["Stage 1:<br>Residual Block x3<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip<br>Connection"]:::res
+            S1 --> S2["Stage 2:<br>Residual Block x4<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip<br>Connection"]:::res
+            S2 --> S3["Stage 3:<br>Residual Block x6<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip<br>Connection"]:::res
+            S3 --> S4["Stage 4:<br>Residual Block x3<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip Connection"]:::res
+            S4 --> GAP["Global Average Pooling"]:::res
+            GAP --> DENSE["Fully Connected Layer"]:::res
+            DENSE --> FV["Static Feature Vector<br>S ∈ R^2048"]:::res
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,900 @@
+Progressive Evolution of Emotion Detection: From
+Unimodal Baselines to a Quad-Modal Dynamic
+Fusion Architecture
+Atharv Shukla
+Axis Institute of Technology and Management
+Kanpur, IND
+Rashi Agrawal
+Computer Science and Engineering
+Harcourt Butler Technical University
+Kanpur, IND
+Abstract—Background:Older Emotion Detection Systems rely
+on a single type of input like Audio or Video. While those are
+effective in a controlled lab or studio, those single Input systems
+often fail in real world scenarios like dim lights, noise in audio,
+improper speech and many real world problematic conditions.
+Objective:In this paper, we present a new Quad-Modal Emo-
+tion Detection System that is a Fusion of four major sub-models,
+which are: static facial pictures, moving facial expressions, speech
+tone, and spoken words and texts (NLP).
+Methods:In this Model we built a Dynamic Weighted Algo-
+rithm that shifts the focus of the model to that one of the Sub-
+model based on the condition of recognition of Emotion like ”Is
+there only video or No person is visible in camera so only speech
+or text”.It is done by using Cross Model Multi head attention.
+Results:Even though we ran this system on CPU purely due
+to the absence of a CUDA Compatible NVIDIA GPU — utilizing
+the asynchronous state of buffering for the heavy NLP pipeline
+to maintain the video frame rates — Our training and test shows
+the accuracy of 61.21% with the mean AUC of 0.90 across six
+emotion classes on chaotic real-world datasets.
+Conclusion:By sacrificing the peak studio accuracy in the ex-
+change of massive environment resilience, this architecture serves
+as a Robust System for Human-Computer Interaction(HCI)
+Index Terms—Emotion Detection, Quad-Modal AI, Deep-
+Learning, Cross-Modal Attention, Natural Language Processing
+(NLP), Feature Fusion, CPU Optimization, AI Ethics
+I. INTRODUCTION
+Teaching an AI System to understand the human emotion
+is a huge part of modern technology era. As we know, AI
+integrates into hospitals, offices, businesses and to many works
+so its necessary for AI to understand that how human feels.So
+for this purpose, there are many Traditional AI System build
+that are baseline models. They only work on Audio(speech
+recording) or Video Recognition. But these systems are not
+enough to recognize and understand the Emotions of a human
+being. Also they do not work well in Real world Conditions.
+These unimodal(baseline single-Input model) works well in
+labs and studios but they consistently fail in real-world chaotic
+conditions where dynamic lighting and occulsion destroy static
+feature extraction [17]. They might analyze a picture of a face
+or recognize through face or speech, but they rarely do well.
+To fix this limitation, we built a Quad-modal(Multi-modal)
+system that has Dynamic Fusion Architecture. Instead of
+processing just one resource only, enable it to process four
+different streams:
+• Dynamic Video: We track moving facial muscles using
+2D CNNs on stacked optical flow frames.
+• Audio Tone: We analyze voice pitch and rhythm using
+1D CNNs on Mel-Spectrograms.
+• Textual Sentiment: We understand the actual words be-
+ing said using Whisper and DistilRoBERTa NLP models.
+• Static Vision: We use a pre-trained Facial Expression
+Recognition (FER) model as a fallback.
+Our main manager of this system is Dynamic Weighted
+Algorithm, that continuously focus on which stream gives best
+result of recognizing Emotion in the Four Sub-models.
+A. Comprehensive Literature Review
+Researchers
+has
+been
+trying
+to
+solve
+the
+Emotion-
+Recognition for a long time, from massive math to deep-
+learning models.
+1) The Era of Handcrafted Features (2000-2012): Before
+deep learning, Researchers mostly used basic machine learning
+to solve emotion recognition like Support Vector Machine
+(SVM) and logical patterns that can work well but in a
+condition of perfect lightning and the person should look
+straight on camera, but if a slightly turned face or move
+towards shadow, the system rules fell apart.
+2) The Deep Learning Visual Revolution (2012-2018):
+When deep learning emerged, the 2D Convolution Neural Net-
+work (CNN) break the rules and accuracy records of datasets
+like FER2013. The CNN model recognizes face shapes by its
+own and starts recognizing the emotions. But there is limitation
+occurs that at this time the model only recognize the static
+image and struggled to capture subtle temporal movements,
+such as a smile, it fails on this.
+3) The Shift to Bimodal Audio-Visual Systems (2018-2022):
+To fix this problem, Researchers developed a ”Bimodal”
+system that has a fusion of both audio and video, where both
+of these work and attempted to concatenate audio and visual
+data into a unified feature vector prior to classification(this is
+called Early Fusion). The big problem here was background
+noise. If the user stopped talking, then system pick up static,
+which would ruin the merged data and cause the system to
+guess the wrong emotion.
+4) The Current Paradigm: Transformer and NLP Integra-
+tion: Today’s systems, they process data separately and only
+merge the final guesses (Late Fusion).Even now the systems
+like Chatgpt work perfectly and start understanding the human
+word even some systems can now recognize macro and micro
+Emotion of face.Our system build on this by merging fours
+streams into one Fusion Engine.
+II. MATERIALS AND METHODS
+A. Proposed Architecture
+Fig. 1. The Quad-Modal Dynamic Weighting Fusion Architecture.
+1) Unimodal Feature Extraction: Before system can merge
+anything, it has to gather the raw data from Environment, for
+this purpose we have architected four pipelines that are running
+separately side by side:
+a) Dynamic Facial Motion (Video CNN): Standard mod-
+els just looks at flat image. To actually see movement in face
+over time, our system pulls a sequence of 15 frames from the
+webcam and stacks their grayscale and optical flow channels
+into 30-channel tensor of shape 64×64×30. A 2D CNN then
+scans this stacked representation to capture both spatial and
+temporal facial patterns.
+b) Vocal Tone Analysis (Audio CNN): To quantify acous-
+tic intensity that someone is yelling or whispering, we take the
+raw audio and convert it into combined Mel-Spectrogram and
+MFCC feature matrix of shape 150 × 136 × 1. A series of
+2D and 1D CNN layers then scans matrix and finds emotional
+acoustic patterns.
+c) Textual Sentiment (Whisper & DistilRoBERTa): Sar-
+casm cannot be detected through a picture. To solve this, we
+run the audio through OpenAI’s Whisper model to turn the
+speech into text, then that text passed to DistilRoBERTa, a
+transformer model fine-tuned on emotion classification that
+reads the text and figures out the underlying mood.
+d) Static Vision Fallback (FER): In some scenarios peo-
+ple remains motionless and silent. When the motion and
+emotion models fail, we rely on pre-trained HuggingFace
+Facial Expression Recognition pipeline to analyze a single
+cropped face frame and keep the system running.
+2) Mathematical Formulation of the Neural Networks: To
+properly process the spatio-temporal data, the Video CNN
+relies on a stacked frame convolution operation. If we let
+V (x, y, t) represent the video input where x, y are spatial co-
+ordinates and t is the stacked frame channel, the mathematical
+feature map F is generated by:
+F(x, y, t) =
+X
+i
+X
+j
+X
+k
+W(i, j, k) · V (x −i, y −j, t −k) + b
+(1)
+where W is the learned weight kernel and b is the bias.
+For the acoustic pipeline, the 1D CNN scans the Mel-
+Spectrogram S(f, t). The 1D convolution isolates the temporal
+acoustic shifts without overlapping into the visual data:
+A(t) =
+X
+k
+K(k) · S(t −k) + ba
+(2)
+By keeping these operations mathematically distinct, we guar-
+antee that background noise in the audio stream cannot poison
+the visual feature maps before fusion.
+B. Detailed System Architecture and Data Flow
+Running the four AI models at the same time is a challenge,
+since we were only able to use CPU only due to system
+limitations. To make this work without lagging we split the
+workload into multiple threads.
+1) Video Preprocessing Pipeline: The Video thread grabs
+webcam frames at about 30 frames per second. Firstly, we turn
+the frame black and white to save processing power. then, a
+Haar Cascade scans the frame to find the face. Once we find
+the face we crop everything else in the background. Finally,
+we resize the face to exactly 64 × 64 pixels and stack 15
+consecutive frames into a 30 channel tensor. Doing this strict
+cleanup ensures our models don’t get confused by cluttered
+backgrounds.
+2) Audio Preprocessing Pipeline: At the same time, the
+audio thread listens in 3-second chunks at 22050 Hz. We pass
+the audio through a Voice Activity Detector(VAD). If the VAD
+hears nothing but silence, it throws the audio away so we do
+not waste CPU power. If it hears someone is talking, then
+it converts the sound into a combined Mel-Spectrogram and
+MFCC matrix using Librosa library. This matrix is then sent
+directly to the audio neural network.
+C. The Dynamic Weighting Algorithm
+Instead of blindly smashing all our data together, we use a
+two-stage fusion strategy. First, the Audio and Video branches
+are merged inside the trained keras model using four-head
+Cross-Modal Multi-Head Attention layer. Second, at the same
+time, the API engine fuses the model’s output with the static
+FER and Text NLP predictions using adaptive confidence
+based weights.
+Let Pav represent the Audio-Video attention output, Pf the
+static FER prediction, and Pt the text NLP prediction. Our
+final prediction is:
+Efinal = arg max (wavPav + wfPf + wtPt)
+(3)
+The weights wi are constantly changing based on what is
+happening in the room.
+1) Algorithmic Implementation: Algorithm 1 shows how
+we actually coded this logic. The system checks the micro-
+phone on every single frame. If the microphone on every single
+frame hears speech, all four models get to vote. If it hears
+silence, it temporarily turns off the audio and text and then all
+the vote goes to the visual models.
+Algorithm 1 Dynamic Weighting Fusion Engine
+Require: Vt (Video Frames), At (Audio Clip), Tt (Text To-
+ken)
+Ensure: Efinal (Predicted Emotion)
+1: while System is Active do
+2:
+Pav ←MultiModal Model(At, Vt) // Cross-Attention
+Fusion
+3:
+Pf ←FER Pipeline(Vt) // Static Face
+4:
+if VAD detects speech in At then
+5:
+Pt ←DistilRoBERTa(Whisper(At))
+6:
+wt ←0.4 if max(Pt) > 0.7 else 0.3
+7:
+wf ←0.3
+8:
+wav ←1.0 −wt −wf
+9:
+else
+10:
+// Silence: Rely on vision
+11:
+wav ←0.3,
+wf ←0.7,
+wt ←0.0
+12:
+end if
+13:
+Score = (wav × Pav) + (wf × Pf) + (wt × Pt)
+14:
+Efinal = arg max(Score)
+15: end while
+2) Asynchronous State Buffering for Temporal Consistency:
+A major challenge in Quad-Modal fusion is pipeline design.
+While the visual pipelines run at high speed, the audio pipeline
+using RoBERTa to read text takes significantly longer. If the
+system halted to wait for text analysis, the live video working
+would freeze.
+To solve this issue, we implement an Asynchronous State
+Buffer. The fast video and audio pipelines run on the main
+loop, updating the final prediction matrix instantly. Meanwhile,
+the NLP pipeline processes data asynchronously in the back-
+ground. When the fusion engine asks for the text prediction,
+it simply retrieves the last known NLP state from the buffer
+rather than waiting for the new one. Because human emotional
+states (e.g. happiness, sadness) typically persist for several
+seconds, a minor millisecond delay in the textual processing
+and update does not affect and break the predictive consistency
+of the fusion engine.
+D. Graphical User Interface (GUI) and System Deployment
+we did not want just a theoretical model, so we built a
+Graphic User Interface (GUI). We designed it so that anyone
+can use this Emotion Detection system and get a real time
+emotional feedback, even if they don’t know anything about
+the deep learning concepts.
+1) Real-Time Dashboard and Confidence Tracking: The
+main part of the GUI is the live dashboard. when the webcam
+turns on, you can actually see the weighting algorithm making
+decisions about emotion prediction, As shown in the image
+below, the dashboard gives a direct readout of the active
+pipelines, clearly stating things like ”[Face: 76 frames – Audio:
+Silent – Video: Active]”. Being this level of transparency is
+super important for domains such as tele-therapy, where the
+doctor needs to know why AI thought that the patient was sad.
+Fig. 2. The live facial tracking module with privacy-preserving bounding box
+overlays.
+2) Contextual Recommendations and External Media In-
+tegration: We also built a recommendation engine into the
+GUI.Instead of just tracking the emotion, it also suggests that
+”What To Do” in that particular emotion. as example, if the
+system detects we are ”Neutral” then it suggests ” Best time
+for deep work....distractions”. It even provides the YouTube
+links directly from internet, acting as a mental health assistant
+than just a simple predictor.
+Fig. 3. The contextual recommendation engine displaying confidence metrics
+and curated YouTube media links.
+3) Recommendation Engine Logic: The system not only
+programmed for just guess emotions, it is programmed to
+actively respond on the predicted emotions. Algorithm 2
+outlines the specific logic we coded to trigger the external
+YouTube therapy recommendation.
+E. Dataset and Experimental Setup
+To ensure that our AI actually works, we trained it on some
+of the most respected datasets. Knowing exactly what data
+went into the model is the only way to prove that its not
+biased.
+1) Cross-Validation and Data Splitting: To ensure strict
+subject independence and prevent data leakage, we partitioned
+all datasets using a GroupShuffleSplit methodology
+with test_size=0.15 and random_state=42. The cor-
+pus was split into an 85% training set and a 15% validation
+Algorithm 2 Contextual Media Recommendation Engine
+Require: Efinal (Current Emotion), Confidence (Percent-
+age)
+1: History ←Empty Array
+2: while Dashboard is Active do
+3:
+Append Efinal to History
+4:
+if Efinal is ’Angry’ and Confidence > 90% then
+5:
+Playlist ←FetchYouTube(’Calming Acoustics’)
+6:
+Display Playlist on Dashboard
+7:
+else if Efinal is ’Neutral’ and duration > 5 mins then
+8:
+Playlist ←FetchYouTube(’Deep Work LoFi’)
+9:
+Display Playlist on Dashboard
+10:
+end if
+11: end while
+set based on actor IDs, guaranteeing that no actor appeared
+in both splits. All datasets were unified to a consistent 6-class
+label taxonomy (Happy, Sad, Angry, Fear, Neutral, Disgust).
+2) The RAVDESS Dataset: Our main dataset was the Ry-
+erson Audio-Visual Database of Emotional Speech and song
+(RAVDESS). People consider this the gold standard because
+it uses the professional actors in perfect studio environment.
+As you can see in table 1, the data is balanced across all 6
+classes.
+TABLE I
+RAVDESS DATASET COMPOSITION AND DISTRIBUTION
+Emotion Class
+Audio Clips
+Video Clips
+Total Samples
+Happy
+192
+192
+384
+Sad
+192
+192
+384
+Angry
+192
+192
+384
+Fear
+192
+192
+384
+Disgust
+192
+192
+384
+Neutral
+96
+96
+192
+Total
+1056
+1056
+2112
+3) The SAMM Dataset: RAVDESS is great, but the actors
+are faking it. We wanted our system to detect real, spontaneous
+micro-expressions. For that, we used the SAMM dataset. They
+record people at 200 frames per second while showing them
+emotional videos, means every reaction in this dataset is 100%
+genuine.
+TABLE II
+SAMM DATASET DEMOGRAPHICS AND COMPOSITION
+Metric
+Count / Value
+Total Participants
+32
+Total Spontaneous Micro-Expressions
+159
+Frame Rate
+200 FPS
+Resolution
+2040 × 1088
+Primary Emotion Classes
+Happy, Surprise, Anger, Fear, Disgust
+4) The CREMA-D Dataset: At last, We finally added the
+CREMA-D dataset to make sure our system works on every-
+one, not just one specific demographic. CREMA-D includes
+91 different actors with a huge variety of ethnicities, ages and
+accents. This forces our neural networks to learn universal
+emotional signs rather than just memorizing a few specific
+faces.
+TABLE III
+CREMA-D DATASET COMPOSITION
+Emotion Class
+Audio-Visual Clips
+Happy
+1,271
+Sad
+1,271
+Angry
+1,271
+Fear
+1,271
+Disgust
+1,271
+Neutral
+1,087
+Total
+7,442
+Fig. 4. Examples of the static facial inputs categorized by emotional state.
+F. Implementation Details
+If someone else wants wants to build this system, they
+actually need to know that what setup we had made of the
+neural networks.
+1) Hardware and Software Constraints: All network train-
+ing, hyperparameter tuning, and ablation studies were con-
+ducted locally on consumer-grade hardware, specifically an HP
+Victus laptop. Due to the lack of CUDA compatible NVIDIA
+hardware ( the system features an AMD Radeon GPU), all
+deep learning model training and real-time inferences executed
+on the CPU. The software stack was built upon a Windows
+operating system utilizing python 3.10 (due to limitations of
+working of Tensor-Flow framework which only works on
+python version of 3.10 or older) and a CPU - optimized
+compilation of Tensor-Flow/Keras.
+2) Training Strategy: Training was conducted into two
+phases. Phase 1 froze the pre-trained audio branch (transferred
+from a unimodal) and trained only the video branch and
+attention fusion layers for 80 epochs using Adam Optimizer
+with a learning rate of 1×10−3 i.e 0.001 and label smoothing
+of 0.1. Phase 2 unfroze the entire network and fine-tuned all
+160,102 trainable parameters (out of 332,358 total) for 30
+epochs 2 × 10−5 i.e. 2e-5(0.00002), with early stopping trig-
+gering at epoch 18.. Table IV shows the exact hyperparameter
+configuration.
+G. Computational Complexity and Hardware Optimization
+Because our only option was to run the entire Quad-Modal
+on CPU, we had to be very careful about performance. Since
+deep learning models are built for GPUs, so running them
+sequentially on a CPU create a large problem of bottleneck.
+TABLE IV
+HYPERPARAMETER CONFIGURATION
+Hyperparameter
+Configured Value
+Optimizer
+Adam
+Phase 1 Learning Rate
+1 × 10−3
+Phase 2 Learning Rate
+2 × 10−5
+LR Scheduler
+ReduceLROnPlateau
+Label Smoothing
+0.1
+Dropout Rate
+0.35 – 0.50
+Loss Function
+Categorical Cross-Entropy
+Phase 1 Max Epochs
+80
+Phase 2 Max Epochs
+30 (Early Stopped at 18)
+1) Time Complexity Analysis: The speed of our system
+depends on which pipeline takes the longest to run. If N is
+the video pixels, M is the audio data, and T is the text data,
+the total time complexity looks like this:
+Ofusion = O(N log N) + O(M 2) + O(T 2)
+(4)
+The O(T 2) part comes from the DistilRoBERTa text model.
+Reading text is surprisingly heavy for a CPU, and it sometimes
+caused our system to lag behind the webcam feed. We fixed
+this by putting the text analysis on its own asynchronous
+thread.
+TABLE V
+SYSTEM HARDWARE AND DEPENDENCY SPECIFICATIONS
+Component
+Specification / Version
+Processor (CPU)
+AMD Ryzen / Intel Core i5/i7
+Graphics (GPU)
+Hardware Acceleration Disabled
+RAM Allocation
+16 GB DDR4
+Deep Learning Framework
+TensorFlow / Keras 2.12 (CPU Only)
+Audio Processing
+Librosa 0.10.0
+Computer Vision
+OpenCV (cv2) 4.7.0
+NLP Backend
+Hugging Face Transformers 4.28
+2) Data Augmentation and Synthetic Expansion: AI models
+are highly reliant for data. If you train them on a small dataset,
+they just memorize the faces instead of actually learning how
+to read emotions. To prevent this, we artificially expanded our
+datasets before we started training.
+For the audio model, we injected the fake background noise
+(like traffic sounds) into the clips so the AI would learn to
+ignore it. We also shifted the pitch up and down to simulate
+different types of voices. For the video models, we flipped the
+images, darkened them, and tilted them slightly to simulate bad
+webcam angles and poor lightning. Class weights were com-
+puted using compute_class_weight(’balanced’) to
+handle the imbalanced classes.
+H. Ethical Considerations, Privacy, and Algorithmic Bias
+Giving the computer the ability to read people’s mind can be
+ethically dangerous. Before putting a system like this in the
+real world, we have to establish some strict rules regarding
+bias and privacy.
+1) Algorithmic Bias and Demographic Representation:
+Older facial recognition systems were notoriously bad at
+reading the faces of minorities. They were mostly trained on
+white actors with perfect studio environment. Because of this,
+they would constantly misread darker skin tones, frequently
+flagging neutral expressions as ’Angry’ just because they
+didn’t know how to process the shadows.
+To fix this, we used highly diversed CREMA-D dataset. We
+also rely heavily on audio and text (which aren’t affected by
+skin color at all). Our weighting algorithm acts as an equalizer,
+ensuring the system doesn’t make biased assumptions based
+purely on pixels.
+2) Biometric Privacy and GDPR Compliance: Your emo-
+tional state is highly sensitive data. Most AI systems today
+send your webcam footage up to a cloud server to process it.
+That is a massive privacy risk. We designed our Quad-Modal
+architecture specifically to run entirely on a local CPU. Be-
+cause everything happens directly on your computer’s RAM,
+your webcam footage never touches the internet, ensuring total
+privacy.
+3) The Danger of Weaponized Emotion AI: Beyond bias
+and privacy, we have to regulate how this AI is used. If
+corporations use this to monitor if their employees are ’happy’
+while working, it creates a dystopian nightmare. Because of
+this we strongly believe our Quad-modal system should only
+be used in consensual, medical environments like therapy or
+automotive safety, where the user actually benefits from the
+AI.
+I. Real-World Application Domains
+Because our system runs locally on basic hardware, it can
+be safely used in a different types of commercial and medical
+environments.
+1) Healthcare and Tele-Therapy: Therapists rely on body
+language to figure out how a patient is doing. But in now
+modern times, everyone doing now Zoom therapy, reading
+those tiny micro-expressions through a compressed webcam
+feed is tough. If therapists use our system, they can get a live
+readout of patient’s emotional condition on the side of their
+screen, helping them provide better care remotely.
+2) Education and E-Learning: It is really hard for teacher
+to ”read the kids” when they are teaching 30 kids over a video
+call or in Zoom meeting. our system can run in the background
+of an educational app and aggregate the class’s mood. If
+the system detects that 80% of the class feels ”Disgust” or
+”Angry”(Frustrated), then it helps the teacher to observe that
+to slow down and explain the concept again.
+3) Automotive Safety and Driver Monitoring: Driver fa-
+tigue and road rage cause a massive amount of accidents.
+Car companies are already putting cameras inside cars. If our
+system is installed in a dashboard, it can keep eye on driver,
+and with the help of alert alarm if installed in car, it can
+alerts the driver to not sleeping by detecting ”Disgust” emotion
+state. Another condition can occurs, if it detects screaming
+and anger, it can automatically boost car’s collision- avoidance
+sensors(if integrated with them.
+4) Customer Service and Call Centers: Customer service
+reps deal with incredibly stressed people all day. If our system
+run in the background of a video call center, it can track
+the customer’s mood. If it sees the customer getting rapidly
+”Angry”, it can automatically flag the call so manager can step
+in and de-escalate the situation.
+III. RESULTS
+A. Real-World Operational Case Studies
+To show why our weighting algorithm is better than older
+models, let’s look at three quick real-world scenarios.
+1) Scenario 1: High Background Noise (The Coffee Shop):
+If you use this in a noisy coffee shop, a normal audio AI will
+freak out. But our system’s Voice Activity Detector will realize
+the background is too messy. It will automatically drop the
+audio trust weights to zero and shift all its focus to the visual
+models, easily reading your mood even in the loud room.
+2) Scenario 2: Visual Occlusion (The Medical Mask): If
+you are wearing a mask, a vision-only AI is completely blind
+it can’t see your mouth (which it needs to spot a smile). Our
+system will realize the face tracking is failing, it drops the
+visual weights to zero and lean entirely on the microphone,
+figuring out your mood just by listening to the tone of your
+voice.
+3) Scenario 3: Contradictory Inputs (Sarcasm): Sarcasm
+breaks almost every AI. If you roll your eyes and say ” I am
+so happy” in a flat voice, a text-only AI will think you are
+actually happy. Our system catches the lie. By fusing the flat
+audio with the negative eye roll, it overrides the spoken words
+and correctly tags the emotion as ”Angry”.
+a) Exhaustive Results and Analytics: Even while re-
+stricted entirely to CPU processing, our model hit a solid
+validation accuracy of 61.21% with a mean AUC of 0.90 when
+tested against chaotic real-world data spanning three datasets
+and six emotion classes.
+4) Confusion Matrix and Class Distribution: As Figure
+5 shows, the system successfully mapped 1526 validation
+samples across 6 classes. The diagonal values sum to 934
+correct, yielding an exact accuracy of 934/1526 = 61.21%.
+The system is highly accurate at spotting ”Angry” (185/273)
+and ”Happy” (169/261), but got slightly confused between
+”Fear” and ”Sad”, mostly because people’s voices sound very
+similar when expressing those two emotions.
+5) Convergence Analytics: We watched the training curves
+closely to make sure the AI wasn’t just memorizing the
+answers(overfitting). As shown in Figure 6, the phase 2
+fine-tuning curves exhibit natural stochastic variance: training
+accuracy oscillates between 61.5% and 63.9% while validation
+stabilizes in a narrow band around 61.5%-62.1%. The persis-
+tent gap between two curves confirms genuine generalization
+without artificial convergence.
+6) Multi-Class ROC Analysis: To evaluate discriminatory
+power beyond raw accuracy, we computed per class ROC
+curves. As shown in Figure 7, the system achieved exception-
+ally strong AUC scores: Neutral(0.96), Angry (0.93), Happy
+(0.88), Disgust and Sad (0.87 each), and Fear (0.86). A mean
+Fig. 5. Confusion Matrix: 1526 validation samples across 6 emotion classes.
+Diagonal sum = 934, giving 934/1526 = 61.21% accuracy.
+AUC of 0.90 demonstrates that the model maintains strong
+class separability even for commonly confused emotion pairs.
+7) Per-Class Precision, Recall, and F1-Score: Figure 8
+breaks down the model’s performance for each individual
+emotion. Angry (F1=0.70) and Neutral (F1=0.73) were the
+easiest to detect, while Fear (F1=0.55) and Sad (F1=0.54) were
+the most challenging due to overlapping acoustic features.
+8) t-SNE Embedding Visualization: To visually confirm
+that the Cross-Modal Attention layer was learning meaning-
+ful fusion representations, we extracted the 64-dimensional
+embeddings from the penultimate fully connected layer and
+projected them into 2D space using t-SNE. As shown in Figure
+9, Neutral (blue) and Angry (red) from clearly separated
+clusters, while Fear and Disgust show more overlap, consistent
+with the confusion matrix findings.
+9) Modality Contribution: Figure 10 visualizes the mea-
+sured Quad-Modal weight distribution. The internal Audio-
+Video split (20.8% vs 19.2%) was extracted from the Multi-
+Head Attention layer’s learned weights, while the static FER
+(30.0%) and Text NLP (30.0%) contributions reflect the mean
+adaptive weights from the inference engine over the validation
+set.
+10) Latency Under CPU-Bound Load: Because we were
+running this strictly on a CPU on HP Victus laptop without
+CUDA acceleration, we had to heavily monitor exactly how
+many milliseconds each model was taking.
+TABLE VI
+AVERAGE INFERENCE LATENCY PER COMPONENT (CPU ONLY)
+Pipeline Component
+Latency (ms)
+Status
+Video Preprocessing (OpenCV)
+12
+Real-Time
+Audio STFT (Librosa)
+28
+Real-Time
+Audio-Video Model
+45
+Acceptable
+Static FER (HuggingFace)
+55
+Acceptable
+DistilRoBERTa (NLP)
+210
+Async Thread
+Fig. 6.
+Combined Training and Validation Accuracy (left) and Loss (right) over fine-tuned epochs. the curves represent natural stochastic variance and a
+healthy, persistent generalization gap, proving the model is not overfitting to the training set.
+Fig. 7. Multi-Class ROC Curves with per-class AUC scores, demonstrating
+a mean AUC of 0.90 across all six emotion categories.
+Fig. 8. Per-class Precision, Recall, and F1-Score metrics for all six emotion
+categories.
+Fig. 9. t-SNE projection of the 64-dimensional cross-modal attention embed-
+dings, showing emotion-specific clustering.
+Fig. 10. Measured Quad-Modal attention weight distribution across the four
+pipelines during active validation.
+As shown in Table VI, the OpenCV and Librosa pre-
+processing steps were incredibly fast. The only major bot-
+tleneck was the DistilRoBERTa NLP model at 210ms. By
+employing the asynchronous state buffer described in Section
+VI, we prevented this 210ms lag from stalling the UI. Because
+human emotional expressions typically last between 0.5 to
+4.0 seconds, fusing a slightly delayed (210ms) text result
+with a real-time video frame maintains flawless prediction
+consistency without destroying frame rates.
+IV. DISCUSSION
+A. Failure Analysis and Limitations
+While hitting 61.21% accuracy on a CPU is a solid result,
+the system isn’t perfect. Looking at the confusion matrix
+(Figure 5), the AI sometimes mixes up ”Fear” and ”Sad”.
+This happens because people’s voice naturally get higher and
+faster during both of those emotions. If the person’s face is
+covered while they are yelling, the audio model gets confused
+and guesses the wrong emotion. Furthermore, static vision
+models suffer from ’neutral face misclassification’, where
+resting facial geometry is confused with negative emotions like
+Disgust or Anger [16]. Our architecture solves this inherent
+static bias by requiring high optical flow to validate negative
+micro-expressions, preventing false positives on resting faces.
+B. Ablation Studies and Baseline Comparison
+To mathematically prove that we actually needed all four
+models, we ran an ablation study. We basically turned off
+different cameras and microphones to see how badly the
+system would crash.
+1) Why Quad-Modal if Unimodal Audio Scores Higher?:
+A natural question arises: if our own unimodal Audio CNN
+already achieved 73% accuracy on the CREMA-D dataset,
+and highly-tuned unimodal evaluated in strictly controlled
+environments often report accuracies exceeding 90%, then why
+we need the Quad-modal system with slightly less accuracy
+then unimodal.
+So, for this the answer lies in three critical blind spots that
+no audio-only system can overcome:
+(1) The Studio Recording Illusion. Datasets like CREMA-
+D and RAVDESS are recorded in professional soundproof
+studio with high-end condenser microphones positioned cen-
+timeters from the speaker’s mouth. These pristine conditions
+produce unnaturally clean audio that a neural network can
+easily classify. However, in real-world deployment, the user
+is sitting in a noisy room with a normal laptop microphone.
+Background noise (traffic, air conditioning, keyboard clicks)
+masks the subtle pitch and rhythm cues that the depends
+on. Research consistently shows that audio-only SER models
+suffer from catastrophic domain shift in noisy environments,
+with accuracy suffering degradation compared to clean studio
+environments [9].
+(2) Silence Equals System Failure. Audio-only models
+produce zero output when the user stops talking. If a person
+is sitting quietly while feeling deeply sad, the microphone
+captures nothing but ambient noise. The model either crashes
+or randomly guesses. Our Quad-Modal system automatically
+detects this silence via the Voice Activity Detector and seam-
+lessly shifts all trust to the visual pipelines, maintaining
+continuous coverage.
+(3) Audio Cannot Resolve Contradictory Signals. When
+someone sarcastically says ” I am so happy right now” in a
+flat, monotone voice, an audio-only model detects flat tone
+and classifies it as Neutral. But their facial expression (eye
+rolling, frowning) clearly signals Anger. Without visual and
+textual cross-referencing, the audio model is fundamentally
+incapable of detecting sarcasm, deception, or mixed emotions.
+Our system catches these contradictions by fusing all four
+modalities through cross-modal attention.
+In summary, high audio-only accuracy on studio datasets is
+an artifact of controlled recording conditions, not a reflection
+of real-world robustness. Our Quad-Modal architecture delib-
+erately trades peak studio accuracy for the ability to survive
+noise, silence and contradictory inputs, which is the only
+metric that matters in deployment.
+2) Visual Deprivation (Audio-Text Only): When we turned
+the cameras off (simulating a pitch-black room), the system
+just listened to the audio. It still held a decent 58.12% accuracy
+as long as the user kept talking. But the moment the room went
+quiet, the system completely failed, proving exactly why we
+needed the visual models as a backup.
+3) Acoustic Deprivation (Vision Only): When we muted
+the microphones, the video models had to do all the work. It
+could easily spot obvious smiles(”Happy”), but it had a really
+hard time telling the difference between subtle sadness and
+fear, causing the accuracy to drop to 51.44%. This proves that
+you simply cannot built a reliable emotion detector using only
+cameras.
+TABLE VII
+ABLATION STUDY: IMPACT OF MODALITY ISOLATION ON ACCURACY
+Active Modalities
+Disabled Modalities
+Accuracy
+All (Quad-Modal)
+None (Baseline)
+61.21%
+Audio + Text + Static
+Video CNN
+58.10%
+Video + Static + Text
+Audio CNN
+54.75%
+Audio + Text Only
+Both Vision
+58.12%
+Video + Static Only
+Audio + NLP
+51.44%
+V. CONCLUSIONS
+In this paper, we built a Quad-Modal Emotion Detection
+System to fix the annoying bugs found in older, single-input AI
+models. By running video, audio, text, and static image analy-
+sis all the same time using Cross-Modal multi-Head Attention,
+we gave the computer a much deeper understanding of human
+behavior. Our custom Weighting Algorithm proved that if one
+sensor fails, the AI can instantly pivot and rely on the other
+sensors to keep working. The system achieved a validation
+accuracy of 61.21% with a mean AUC of 0.90 across six
+emotion classes, demonstrating strong discriminatory power
+even under CPU-only constraints.
+TABLE VIII
+SUMMARY OF KEY PROJECT ACHIEVEMENTS
+Metric
+Achievement
+Architecture
+Quad-Modal (AV Attention + FER + NLP)
+Fusion Strategy
+Cross-Modal Multi-Head Attention + Adap-
+tive Weights
+Hardware
+100% Local CPU Processing
+Accuracy / AUC
+61.21% / 0.90 mean AUC
+Target Audience
+Tele-therapy, Education, Automotive
+A. Future Work and Development Roadmap
+Moving forward, we have planned a three-phase Roadmap
+to upgrade this system from a local prototype to a fully
+upgraded and deployable application, without losing our focus
+on user privacy.
+1) Phase 1: Hardware Acceleration. Right now, the sys-
+tem is bottlenecked by the HP Victus CPU. our first
+goal is to rewrite the inference engine to support CUDA.
+By offloading the CNN and RoBERTa models to an
+NVIDIA GPU, we expect to hit a flawless 60 FPS real-
+time processing speed.
+2) Phase 2: Penta-Modal Integration. Visual and audio
+cues can sometimes be faked by the user. To prevent
+this, we plan to integrate smart watch APIs to pull
+in the live Hear-Rate variability (HRV) and Galvanic
+Skin Response (GSR). Adding this fifth modality (Penta-
+Modal) will make the system nearly foolproof.
+3) phase 3: Real Time Learning. Sometimes Inference
+mode of the system gives emotion prediction based on
+learned and trained features and test cases. So, our goal
+is to make it a real time learner, that makes it to learn
+from new and different types of real-world scenarios.
+4) Phase 4: Mobile Edge Deployment. Finally, we need
+to drastically shrink the deep learning models using
+technique called ”Quantization”. By making the model
+smaller, we can deploy the entire Quad-Modal system
+directly onto Android or iOS smartphone, allowing users
+to have a private mental health companion in their
+pocket.
+ACKNOWLEDGMENTS
+We want to say a massive thank you to our project guide
+for their invaluable mentorship, technical guidance, and con-
+tinuous support throughout this research. I also extend my
+deepest appreciation to the Department of Computer Science
+and Engineering at Harcourt Buttler Technical University. The
+facilities, resources and academic environment provided by
+University were instrumental in the successful development
+and implementation of this project.
+REFERENCES
+[1] P. Ekman and W. V. Friesen, ”Constants across cultures in the face and
+emotion,” Journal of Personality and Social Psychology, vol. 17, no. 2,
+pp. 124–129, 1971.
+[2] S. R. Livingstone and F. A. Russo, ”The Ryerson Audio-Visual Database
+of Emotional Speech and Song (RAVDESS),” PLOS ONE, vol. 13, no.
+5, 2018.
+[3] A. K. Davison et al., ”SAMM: A Spontaneous Micro-Facial Movement
+Dataset,” IEEE Transactions on Affective Computing, vol. 9, no. 1, pp.
+116–129, 2018.
+[4] H. Cao et al., ”CREMA-D: Crowd-sourced Emotional Multimodal
+Actors Dataset,” IEEE Transactions on Affective Computing, vol. 5, no.
+4, pp. 377-390, 2014.
+[5] A. Radford et al., ”Robust Speech Recognition via Large-Scale Weak
+Supervision (Whisper),” arXiv preprint arXiv:2212.04356, 2022.
+[6] Y. Liu et al., ”RoBERTa: A Robustly Optimized BERT Pretraining
+Approach,” arXiv preprint arXiv:1907.11692, 2019.
+[7] K. He, X. Zhang, S. Ren, and J. Sun, ”Deep Residual Learning for
+Image Recognition,” Proc. IEEE Conf. Comput. Vis. Pattern Recognit.
+(CVPR), pp. 770–778, 2016.
+[8] D. Tran, L. Bourdev, R. Fergus, L. Torresani, and M. Paluri, ”Learning
+Spatiotemporal Features with 3D Convolutional Networks,” Proc. IEEE
+Int. Conf. Comput. Vis. (ICCV), pp. 4489–4497, 2015.
+[9] S. Poria, E. Cambria, R. Bajpai, and A. Hussain, ”A review of affective
+computing: From unimodal analysis to multimodal fusion,” Information
+Fusion, vol. 37, pp. 98–125, 2017.
+[10] T. Baltruˇsaitis, C. Ahuja, and L. Morency, ”Multimodal Machine Learn-
+ing: A Survey and Taxonomy,” IEEE Transactions on Pattern Analysis
+and Machine Intelligence, vol. 41, no. 2, pp. 423–443, 2019.
+[11] M. S. Hossain and G. Muhammad, ”Emotion recognition using deep
+learning approach from audio-visual emotional big data,” Information
+Fusion, vol. 49, pp. 69–78, 2019.
+[12] P. Viola and M. Jones, ”Robust real-time face detection,” Proc. IEEE
+Int. Conf. Comput. Vis. (ICCV), vol. 2, pp. 747–754, 2001.
+[13] G. Bradski, ”The OpenCV Library,” Dr. Dobb’s Journal of Software
+Tools, vol. 25, pp. 120–123, 2000.
+[14] C. G. Busso et al., ”IEMOCAP: Interactive emotional dyadic motion
+capture database,” Language resources and evaluation, vol. 42, no. 4,
+pp. 335–359, 2008.
+[15] B. Schuller, S. Steidl, and A. Batliner, ”The INTERSPEECH 2009 emo-
+tion challenge,” Tenth Annual Conference of the International Speech
+Communication Association, 2009.
+[16] J. Macbeth and C. Rogers, ”Throwing shade: The science of resting
+bitch face,” Noldus Information Technology, 2015.
+[17] A. Mollahosseini, B. Hasani, and M. H. Mahoor, ”AffectNet: A database
+for facial expression, valence, and arousal computing in the wild,” IEEE
+Transactions on Affective Computing, vol. 10, no. 1, pp. 18-31, 2017.

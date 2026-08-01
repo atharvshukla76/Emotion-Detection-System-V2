@@ -1,0 +1,13 @@
+graph LR
+  subgraph Top [" "]
+    direction LR
+    IN["Video Input"]:::vid --> PRE["Grayscale & Optical Flow"]:::vid --> S1["Stage 1"]:::vid --> S2["Stage 2"]:::vid
+  end
+  subgraph Bottom [" "]
+    direction TD
+    S3["Stage 3"]:::vid --> GAP["Global Average Pooling"]:::vid --> DENSE["Dense Layer"]:::vid --> FV["Video Feature Vector"]:::vid
+  end
+  S2 --> S3
+  classDef vid fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000;
+  style Top fill:none,stroke:none,color:transparent;
+  style Bottom fill:none,stroke:none,color:transparent;

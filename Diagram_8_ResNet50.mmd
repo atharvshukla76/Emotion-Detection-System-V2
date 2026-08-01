@@ -1,0 +1,18 @@
+graph LR
+  subgraph Top [" "]
+    direction LR
+    IN["Cropped Face Single<br>Frame"]:::res --> INIT["Initial Convolution<br>Conv 7x7 --><br>BatchNorm --> ReLU<br>--> MaxPool"]:::res
+    INIT --> S1["Stage 1:<br>Residual Block x3<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip<br>Connection"]:::res
+    S1 --> S2["Stage 2:<br>Residual Block x4<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip<br>Connection"]:::res
+  end
+  subgraph Bottom [" "]
+    direction TD
+    S3["Stage 3:<br>Residual Block x6<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip<br>Connection"]:::res --> S4["Stage 4:<br>Residual Block x3<br>Bottleneck: Conv 1x1 --><br>Conv 3x3 --> Conv 1x1 + Residual Skip Connection"]:::res
+    S4 --> GAP["Global Average Pooling"]:::res
+    GAP --> DENSE["Fully Connected Layer"]:::res
+    DENSE --> FV["Static Feature Vector<br>S ∈ R^2048"]:::res
+  end
+  S2 --> S3
+  classDef res fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000;
+  style Top fill:none,stroke:none,color:transparent;
+  style Bottom fill:none,stroke:none,color:transparent;

@@ -1,0 +1,80 @@
+# =====================================================================
+# 🧠 STEP 2: CROSS-MODAL ARCHITECTURE (Scaled for 9K+ samples)
+# =====================================================================
+L2 = regularizers.l2(5e-4)
+
+# --- BRANCH 1: AUDIO (V1 structure, frozen after transfer) ---
+audio_inputs = layers.Input(shape=TARGET_AUDIO_SHAPE, name="audio_input")
+x_aud = layers.Conv2D(32, (3,3), padding='same', kernel_regularizer=L2, name="audio_conv2d_1")(audio_inputs)
+x_aud = layers.BatchNormalization(name="audio_bn_1")(x_aud)
+x_aud = layers.Activation('relu', name="audio_act_1")(x_aud)
+x_aud = layers.MaxPooling2D((2,2), name="audio_pool_1")(x_aud)
+x_aud = layers.Dropout(0.2, name="audio_drop_1")(x_aud)
+
+x_aud = layers.Conv2D(64, (3,3), padding='same', kernel_regularizer=L2, name="audio_conv2d_2")(x_aud)
+x_aud = layers.BatchNormalization(name="audio_bn_2")(x_aud)
+x_aud = layers.Activation('relu', name="audio_act_2")(x_aud)
+x_aud = layers.MaxPooling2D((2,2), name="audio_pool_2")(x_aud)
+x_aud = layers.Dropout(0.25, name="audio_drop_2")(x_aud)
+
+x_aud = layers.Conv2D(64, (3,3), padding='same', kernel_regularizer=L2, name="audio_conv2d_3")(x_aud)
+x_aud = layers.BatchNormalization(name="audio_bn_3")(x_aud)
+x_aud = layers.Activation('relu', name="audio_act_3")(x_aud)
+x_aud = layers.MaxPooling2D((2,2), name="audio_pool_3")(x_aud)
+x_aud = layers.Dropout(0.3, name="audio_drop_3")(x_aud)
+
+x_aud = layers.Conv2D(64, (3,3), padding='same', kernel_regularizer=L2, name="audio_conv2d_4")(x_aud)
+x_aud = layers.BatchNormalization(name="audio_bn_4")(x_aud)
+x_aud = layers.Activation('relu', name="audio_act_4")(x_aud)
+
+time_steps = x_aud.shape[1]
+features = x_aud.shape[2] * x_aud.shape[3]
+x_aud = layers.Reshape((time_steps, features), name="audio_reshape")(x_aud)
+x_aud = layers.Conv1D(64, 1, padding='same', activation='relu', kernel_regularizer=L2, name="audio_conv1d_1")(x_aud)
+x_aud = layers.BatchNormalization(name="audio_bn_5")(x_aud)
+x_aud = layers.Dropout(0.3, name="audio_drop_4")(x_aud)
+x_aud = layers.Conv1D(32, 3, padding='same', activation='relu', kernel_regularizer=L2, name="audio_conv1d_2")(x_aud)
+x_aud = layers.BatchNormalization(name="audio_bn_6")(x_aud)
+x_aud = layers.GlobalAveragePooling1D(name="audio_gap1d")(x_aud)
+audio_emb = layers.Dense(64, activation='relu', kernel_regularizer=L2, name="audio_dense")(x_aud)
+
+# --- BRANCH 2: VIDEO (2D CNN on stacked optical flow) ---
+video_inputs = layers.Input(shape=TARGET_VIDEO_SHAPE, name="video_input")
+x_vid = layers.Conv2D(32, (3,3), padding='same', kernel_regularizer=L2, name="video_conv_1")(video_inputs)
+x_vid = layers.BatchNormalization(name="video_bn_1")(x_vid)
+x_vid = layers.Activation('relu', name="video_act_1")(x_vid)
+x_vid = layers.MaxPooling2D((2,2), name="video_pool_1")(x_vid)
+x_vid = layers.Dropout(0.25, name="video_drop_1")(x_vid)
+
+x_vid = layers.Conv2D(64, (3,3), padding='same', kernel_regularizer=L2, name="video_conv_2")(x_vid)
+x_vid = layers.BatchNormalization(name="video_bn_2")(x_vid)
+x_vid = layers.Activation('relu', name="video_act_2")(x_vid)
+x_vid = layers.MaxPooling2D((2,2), name="video_pool_2")(x_vid)
+x_vid = layers.Dropout(0.35, name="video_drop_2")(x_vid)
+
+x_vid = layers.Conv2D(64, (3,3), padding='same', kernel_regularizer=L2, name="video_conv_3")(x_vid)
+x_vid = layers.BatchNormalization(name="video_bn_3")(x_vid)
+x_vid = layers.Activation('relu', name="video_act_3")(x_vid)
+x_vid = layers.Dropout(0.4, name="video_drop_3")(x_vid)
+
+x_vid = layers.GlobalAveragePooling2D(name="video_gap")(x_vid)
+video_emb = layers.Dense(64, activation='relu', kernel_regularizer=L2, name="video_dense")(x_vid)
+
+# --- FUSION (CROSS-MODAL ATTENTION) ---
+audio_seq = layers.Reshape((1, 64), name="audio_seq")(audio_emb)
+video_seq = layers.Reshape((1, 64), name="video_seq")(video_emb)
+merged_seq = layers.Concatenate(axis=1, name="fusion_seq")([audio_seq, video_seq]) # Shape: (None, 2, 64)
+
+# The Multi-Head Attention layer will dynamically assign weights to the valid modality
+attn_out = layers.MultiHeadAttention(num_heads=4, key_dim=64, name="cross_attention")(merged_seq, merged_seq)
+attn_out = layers.Flatten(name="attn_flatten")(attn_out)
+
+fc = layers.Dense(128, activation='relu', kernel_regularizer=L2, name="fc_fusion_1")(attn_out)
+fc = layers.Dropout(0.5, name="fc_drop_1")(fc)
+fc = layers.Dense(64, activation='relu', kernel_regularizer=L2, name="fc_fusion_2")(fc)
+fc = layers.Dropout(0.3, name="fc_drop_2")(fc)
+
+outputs = layers.Dense(num_classes, activation='softmax', name="softmax_output")(fc)
+
+model = models.Model(inputs=[audio_inputs, video_inputs], outputs=outputs, name="Moodwave_V2")
+model.summary()

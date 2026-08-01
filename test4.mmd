@@ -1,0 +1,16 @@
+graph LR
+  IN["Video Input"]:::vid --> PRE["Grayscale & Optical Flow"]:::vid --> S1["Stage 1"]:::vid --> S2["Stage 2"]:::vid
+  S2 --> S3["Stage 3"]:::vid
+  S3 --> GAP["Global Average Pooling"]:::vid
+  GAP --> DENSE["Dense Layer"]:::vid
+  DENSE --> FV["Video Feature Vector"]:::vid
+  
+  IN ~~~ H1[ ]:::hidden
+  H1 ~~~ S3
+  PRE ~~~ H2[ ]:::hidden
+  H2 ~~~ GAP
+  S1 ~~~ H3[ ]:::hidden
+  H3 ~~~ DENSE
+  
+  classDef vid fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000;
+  classDef hidden display:none;

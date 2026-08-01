@@ -1,0 +1,20 @@
+graph LR
+  subgraph Top [" "]
+    direction LR
+    IN["Audio Input 3 sec Clip<br>22050Hz"]:::aud --> PRE["Librosa Preprocessing<br>Mel-Spectrogram + MFCC<br>150 x 156 x 1 Matrix"]:::aud
+    PRE --> S1["Stage 1<br>Conv2D (32, 3x3) -><br>MaxPool<br>Conv2D (64, 3x3) -><br>MaxPool"]:::aud
+    S1 --> S2["Stage 2<br>Conv2D (32, 3x3) -> MaxPool<br>Conv2D (64, 3x3) -> MaxPool"]:::aud
+    S2 --> S3["Stage 3<br>Conv2D (64, 3x3) -> MaxPool<br>Conv2D (64, 3x3)"]:::aud
+  end
+  subgraph Bottom [" "]
+    direction TD
+    S4["Stage 4<br>Conv2D (64, 3x3) -> MaxPool<br>Conv2D (64, 3x3)"]:::aud --> RESHAPE["Reshape to 1D Sequence"]:::aud
+    RESHAPE --> S5["Stage 5<br>Conv1D (64, 1x1)<br>Conv1D (32, 3x3)"]:::aud
+    S5 --> GAP["Global Average Pooling<br>1D"]:::aud
+    GAP --> DENSE["Dense Layer 64 Neurons"]:::aud
+    DENSE --> FV["Audio Feature Vector<br>A ∈ R^64"]:::aud
+  end
+  S3 --> S4
+  classDef aud fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000;
+  style Top fill:none,stroke:none,color:transparent;
+  style Bottom fill:none,stroke:none,color:transparent;

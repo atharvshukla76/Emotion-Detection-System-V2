@@ -1,0 +1,24 @@
+# =====================================================================
+# 🔊 V1 AUDIO PREPROCESSING (WITH DATA CLEANING SANITIZERS)
+# =====================================================================
+def load_audio(file_path):
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        print(f"Warning: Audio file missing or empty: {file_path}")
+        return np.zeros(SAMPLES, dtype=np.float32)
+        
+    try:
+        signal, _ = librosa.load(file_path, sr=SAMPLE_RATE)
+        if len(signal) == 0:
+            return np.zeros(SAMPLES, dtype=np.float32)
+            
+        # Trim silent boundaries
+        trimmed_signal, _ = librosa.effects.trim(signal, top_db=30)
+        if len(trimmed_signal) > 0:
+            signal = trimmed_signal
+            
+        # Zero-center mean normalization
+        signal = signal - np.mean(signal)
+    except Exception as e:
+        print(f"Error loading audio {file_path}: {e}")
+        return np.zeros(SAMPLES, dtype=np.float32)
+ 

@@ -1,0 +1,75 @@
+# =====================================================================
+# 🎥 V2 VIDEO PREPROCESSING (ROI DENSE OPTICAL FLOW SANITIZED)
+# =====================================================================
+def extract_landmark_masked_flow_from_frames(frame_list, target_frames=16, img_size=(64, 64)):
+    if len(frame_list) < 2:
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32)
+    
+    frames = []
+    for frame in frame_list:
+        if frame is None:
+            continue
+        try:
+            if len(frame.shape) == 3:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = frame
+            h, w = gray.shape
+            y_start_eye, y_end_eye = int(h * 0.15), int(h * 0.45)
+            X_start_eye, X_end_eye = int(w * 0.2), int(w * 0.8)
+            y_start_mouth, y_end_mouth = int(h * 0.65), int(h * 0.9)
+            X_start_mouth, X_end_mouth = int(w * 0.25), int(w * 0.75)
+            
+            eyes_brow = gray[y_start_eye:y_end_eye, X_start_eye:X_end_eye]
+            mouth = gray[y_start_mouth:y_end_mouth, X_start_mouth:X_end_mouth]
+            
+            if eyes_brow.size == 0 or mouth.size == 0:
+                continue
+                
+            eyes_resized = cv2.resize(eyes_brow, (img_size[0], img_size[1] // 2))
+            mouth_resized = cv2.resize(mouth, (img_size[0], img_size[1] // 2))
+            combined_roi = np.vstack([eyes_resized, mouth_resized])
+            frames.append(combined_roi)
+        except Exception:
+            continue
+    if len(frames) < 2:
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32)
+    
+    indices = np.linspace(0, len(frames) - 1, target_frames).astype(int)
+    selected_frames = [frames[i] for i in indices]
+    flow_sequence = []
+    
+    for i in range(len(selected_frames) - 1):
+        prev = selected_frames[i]
+        nxt = selected_frames[i + 1] 
+        try:
+            flow = cv2.calcOpticalFlowFarneback(
+                prev, nxt, None, 
+                pyr_scale=0.5, levels=3, winsize=15, 
+                iterations=3, poly_n=5, poly_sigma=1.2, flags=0
+            )
+            flow = np.clip(flow, -50.0, 50.0)
+            flow = np.nan_to_num(flow)
+            flow_sequence.append(flow)
+        except Exception:
+            flow_sequence.append(np.zeros((img_size[0], img_size[1], 2), dtype=np.float32))
+            
+    return np.array(flow_sequence, dtype=np.float32)
+    
+def extract_flow_from_video(video_path):
+    if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
+        return np.zeros(TARGET_VIDEO_SHAPE, dtype=np.float32)
+    
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    try:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames.append(frame)
+    except Exception as e:
+        print(f"Error reading video {video_path}: {e}")
+    finally:
+        cap.release()
+    return extract_landmark_masked_flow_from_frames(frames)

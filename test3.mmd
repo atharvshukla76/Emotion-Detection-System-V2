@@ -1,0 +1,17 @@
+graph LR
+    IN["Video Input<br>15 frames"]:::vid --> PRE["Grayscale & Optical Flow<br>Resize 64x64, stack 30<br>channels"]:::vid
+    PRE --> S1["Stage 1<br>Conv2D (32, 3x3) -><br>BatchNorm<br>-> ReLU -> MaxPool 2x2"]:::vid
+    S1 --> S2["Stage 2<br>Conv2D(64, 3x3) -> BatchNorm<br>-> ReLU -> MaxPool 2x2"]:::vid
+    
+    S2 --> S3["Stage 3<br>Conv2D (64, 3x3) -><br>BatchNorm<br>-> ReLU -> Dropout"]:::vid
+    
+    S3 --> GAP["Global Average Pooling<br>2D"]:::vid
+    GAP --> DENSE["Dense Layer 64<br>Neurons"]:::vid
+    DENSE --> FV["Video Feature Vector<br>V ∈ R^64"]:::vid
+    
+    IN ~~~ S3
+    PRE ~~~ GAP
+    S1 ~~~ DENSE
+    S2 ~~~ FV
+
+    classDef vid fill:#bbdefb,stroke:#1565c0,stroke-width:2px,color:#000;
