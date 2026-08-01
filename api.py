@@ -636,16 +636,8 @@ def fuse_modalities(probs_av, probs_fer, probs_text, aud_silent, vid_active, mot
 
     final = (probs_av * wav) + (probs_fer * wf) + (probs_text * wt)
     if final.sum() > 0: final /= final.sum()
-
-    n_idx = int(np.where(encoder.classes_ == 'Neutral')[0][0])
-    if np.argmax(final) == n_idx:
-        sorted_idx = np.argsort(final)[::-1]
-        runner_up  = sorted_idx[1]
-        if final[runner_up] > 0.25 and motion_mean > 0.3:
-            em_name = encoder.classes_[runner_up]
-            if not (em_name == 'Disgust' and motion_mean < 0.8):
-                final[n_idx] *= 0.4
-                final /= final.sum()
+    
+    # REMOVED the Neutral-suppression hack that was artificially promoting Fear to 1st place!
 
     # --- TEMPORARY DIAGNOSTIC LOGGING ---
     print("\n" + "="*50)
