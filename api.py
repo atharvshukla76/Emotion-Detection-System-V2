@@ -647,6 +647,24 @@ def fuse_modalities(probs_av, probs_fer, probs_text, aud_silent, vid_active, mot
                 final[n_idx] *= 0.4
                 final /= final.sum()
 
+    # --- TEMPORARY DIAGNOSTIC LOGGING ---
+    print("\n" + "="*50)
+    print("🧠 DIAGNOSTIC PROBABILITY LOGGING")
+    print("="*50)
+    
+    def format_probs(probs):
+        return ", ".join([f"{encoder.classes_[i]}: {p:.2f}" for i, p in enumerate(probs)])
+        
+    print(f"[RAW] PyTorch AV Model : {format_probs(probs_av)}")
+    print(f"[RAW] ViT FER Model    : {format_probs(probs_fer) if probs_fer.sum() > 0 else 'N/A'}")
+    print(f"[RAW] DistilRoBERTa NLP: {format_probs(probs_text) if probs_text.sum() > 0 else 'N/A'}")
+    print("-"*50)
+    print(f"Sarcasm Triggered?     : {bool(sarcasm)}")
+    print(f"Fusion Weights         : AV={wav:.2f} | FER={wf:.2f} | Text={wt:.2f}")
+    print(f"[FINAL] Fused Output   : {format_probs(final)}")
+    print("="*50 + "\n")
+    # ------------------------------------
+
     weights = {"av": float(wav), "fer": float(wf), "text": float(wt)}
     return final, weights, bool(sarcasm)
 
