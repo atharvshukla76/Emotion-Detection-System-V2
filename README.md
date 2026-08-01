@@ -90,11 +90,11 @@ The core intelligence of the system lies in how it dynamically weights the outpu
 
 3. **Run the FastAPI server:**
    ```bash
-   uvicorn api:app --host 0.0.0.0 --port 7860
+   uvicorn api:app --host 0.0.0.0 --port 8000
    ```
 
 4. **Access the application:**  
-   Open your browser and navigate to `http://localhost:7860`
+   Open your browser and navigate to `http://localhost:8000`
 
 ---
 
