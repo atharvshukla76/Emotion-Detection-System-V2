@@ -735,6 +735,9 @@ def process_prediction_task(task_id, temp_dir, video_path, audio_path):
 
         aud_input = np.expand_dims(np.reshape(aud_feat, TARGET_AUDIO_SHAPE), axis=0)
 
+        print(f"[TENSOR CHECK] aud_input: shape={aud_input.shape} mean={aud_input.mean():.3f} std={aud_input.std():.3f} min={aud_input.min():.3f} max={aud_input.max():.3f}")
+        print(f"[TENSOR CHECK] vid_feat: shape={vid_feat.shape} mean={vid_feat.mean():.3f} std={vid_feat.std():.3f} min={vid_feat.min():.3f} max={vid_feat.max():.3f}")
+
         if model is not None:
             a_tensor = torch.from_numpy(aud_input).float()
             v_tensor = torch.from_numpy(vid_feat).float()
