@@ -500,13 +500,43 @@ def run_fer(fer_frames, n_classes):
     return probs
 
 def detect_sarcasm(face_em, audio_em, text_em, face_conf, audio_conf, text_conf):
-    if face_conf < 0.55 or audio_conf < 0.45: return False
-    face_pos  = face_em  in POSITIVE_EMOTIONS
+    """
+    Sarcasm = what you SAY (text) contradicts how you LOOK (face) and/or SOUND (audio).
+    
+    Key insight: sarcasm lives in the BODY, not the words. If someone rolls their eyes
+    (face=Disgust) while saying "I'm so happy" (text=Happy), the truth is Disgust.
+    Vision + audio tone are the ground truth; text is the liar.
+    
+    Detection triggers:
+      1. Face + Audio agree on a sentiment category, but Text disagrees → classic sarcasm
+      2. Face disagrees with Text (even if audio is ambiguous) with high face confidence
+      3. Audio tone disagrees with Text with high audio confidence  
+    """
+    if not text_em or text_conf < 0.30:
+        return False  # No text or very low text confidence — can't be sarcasm
+    
+    # Categorize each modality
+    face_pos  = face_em in POSITIVE_EMOTIONS
     audio_pos = audio_em in POSITIVE_EMOTIONS
-    text_pos  = text_em  in POSITIVE_EMOTIONS if text_em else None
-    if text_pos is not None and text_conf > 0.4:
-        return (face_pos != audio_pos) and (face_pos != text_pos)
-    return face_pos != audio_pos and face_conf > 0.65 and audio_conf > 0.55
+    text_pos  = text_em in POSITIVE_EMOTIONS
+    
+    # Case 1: Face + Audio agree, but Text says the opposite → strongest sarcasm signal
+    if face_pos == audio_pos and face_pos != text_pos:
+        if face_conf > 0.40 and audio_conf > 0.35:
+            return True
+    
+    # Case 2: Face strongly disagrees with Text (audio may be ambiguous/neutral)
+    if face_pos != text_pos and face_conf > 0.50 and text_conf > 0.40:
+        # Face emotion is specific (not Neutral) and contradicts text
+        if face_em != "Neutral":
+            return True
+    
+    # Case 3: Audio tone strongly disagrees with Text
+    if audio_pos != text_pos and audio_conf > 0.50 and text_conf > 0.40:
+        if audio_em != "Neutral":
+            return True
+    
+    return False
 
 def context_engine(probs_av, probs_fer, probs_text, has_fer, has_text, aud_silent):
     if not (has_fer and has_text and not aud_silent): return None, "partial_modalities"
@@ -538,12 +568,19 @@ def context_engine(probs_av, probs_fer, probs_text, has_fer, has_text, aud_silen
     face_pos  = face_em in POSITIVE_EMOTIONS
     audio_pos = audio_em in POSITIVE_EMOTIONS
     text_pos  = text_em in POSITIVE_EMOTIONS
-    if face_pos and (not audio_pos) and (not text_pos) and face_c > 0.5 and audio_c > 0.5:
-        final = (probs_av * 0.50) + (probs_text * 0.40) + (probs_fer * 0.10)
-        return final, "sarcasm_detected:audio+text_win"
+    
+    # Sarcasm: face+audio agree but text contradicts → trust vision+audio, crush text
+    if face_pos == audio_pos and face_pos != text_pos and face_c > 0.4 and audio_c > 0.35:
+        final = (probs_fer * 0.50) + (probs_av * 0.45) + (probs_text * 0.05)
+        return final, f"sarcasm_detected:vision+audio_win_over_text"
+    # Sarcasm: face contradicts text (audio ambiguous) → trust face
+    if face_pos != text_pos and face_c > 0.50 and face_em != "Neutral":
+        final = (probs_fer * 0.55) + (probs_av * 0.35) + (probs_text * 0.10)
+        return final, f"sarcasm_detected:face_overrides_text"
     if face_em != audio_em and audio_em != text_em and face_em != text_em:
-        final = (probs_av * 0.50) + (probs_text * 0.30) + (probs_fer * 0.20)
-        return final, "all_disagree:audio_tone_prioritized"
+        # All three disagree: trust face + audio (physical signals) over text (words)
+        final = (probs_fer * 0.45) + (probs_av * 0.40) + (probs_text * 0.15)
+        return final, "all_disagree:vision+audio_prioritized"
     return None, "no_specific_rule_hit"
 
 def fuse_modalities(probs_av, probs_fer, probs_text, aud_silent, vid_active, motion_mean, brightness, mouth_variance):
@@ -584,7 +621,8 @@ def fuse_modalities(probs_av, probs_fer, probs_text, aud_silent, vid_active, mot
 
         sarcasm = detect_sarcasm(face_em, audio_em, text_em, face_c, audio_c, text_c)
         if sarcasm:
-            wf  = 0.10; wav = 0.50; wt  = 0.40 if has_text else 0.0
+            # Sarcasm detected: trust what you SEE (face) + HEAR (tone), not what is SAID (text)
+            wf  = 0.50; wav = 0.40; wt  = 0.10 if has_text else 0.0
 
     if vid_active and not aud_silent and mouth_variance < 0.10:
         aud_silent = True
