@@ -1,7 +1,5 @@
 fastapi
 uvicorn[standard]
-tensorflow-cpu
-noisereduce
 librosa
 scikit-learn
 numpy<2
@@ -10,6 +8,8 @@ python-multipart
 scipy
 soundfile
 opencv-python==4.9.0.80
+mediapipe
+transformers
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
-transformers
+torchvision
