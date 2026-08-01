@@ -7,7 +7,6 @@ pydantic
 python-multipart
 scipy
 soundfile
-opencv-python==4.9.0.80
 mediapipe
 transformers
 --extra-index-url https://download.pytorch.org/whl/cpu
